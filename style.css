@@ -256,6 +256,12 @@ body {
 .screen.shade {
   background: rgba(0, 0, 0, 0.55);
 }
+.screen.pano {
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.5) 100%);
+}
+.screen.pano.dim {
+  background: rgba(0, 0, 0, 0.5);
+}
 .screen h2 {
   margin: 0 0 8px;
   font-size: 20px;

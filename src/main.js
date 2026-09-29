@@ -23,6 +23,7 @@ import * as store from './storage.js';
 const DEFAULT_HOTBAR = [B.grass, B.dirt, B.stone, B.cobblestone, B.oak_planks, B.oak_log, B.glass, B.torch, B.tnt];
 const REACH = 6;
 const AUTOSAVE_SECONDS = 30;
+const PANORAMA_SEED = 1337;
 const NO_INPUT = { forward: false, back: false, left: false, right: false, jump: false, sneak: false, sprint: false };
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
@@ -81,7 +82,49 @@ class Game {
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && this.world) this.save();
     });
+    this.startPanorama();
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // ------------------------------------------------------------ title panorama
+
+  // A live world slowly spinning behind the title screen.
+  startPanorama() {
+    if (this.pano || !this.renderer) return;
+    const renderer = this.renderer;
+    const world = new World(PANORAMA_SEED, {
+      onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
+      onUnloaded: (c) => renderer.deleteChunk(c),
+    });
+    world.setRenderDistance(Math.min(6, this.settings.renderDistance));
+    const sp = world.findSpawnColumn();
+    this.pano = { world, x: sp.x, z: sp.z, y: null, yaw: 0.6 };
+  }
+
+  stopPanorama() {
+    if (!this.pano) return;
+    this.pano.world.dispose();
+    this.pano = null;
+  }
+
+  renderPanorama(dt) {
+    const pn = this.pano, w = pn.world;
+    w.update(pn.x, pn.z, 8);
+    if (pn.y === null && w.isReady(Math.floor(pn.x / 16), Math.floor(pn.z / 16))) pn.y = w.surfaceY(pn.x, pn.z) + 9;
+    pn.yaw += dt * 0.035;
+    this.renderer.worldSprites.clear();
+    this.renderer.handSprites.clear();
+    this.renderer.render({
+      cam: { x: pn.x, y: pn.y ?? 90, z: pn.z, yaw: pn.yaw, pitch: 0.08, fov: 80 },
+      env: environment(0.07),
+      time: this.clock,
+      chunks: w.chunks.values(),
+      renderDistance: w.renderDistance,
+      selection: null,
+      underwater: false,
+      inLava: false,
+      clouds: this.settings.clouds,
+    });
   }
 
   // ------------------------------------------------------------ settings
@@ -114,6 +157,7 @@ class Game {
 
   startWorld(meta) {
     this.stopWorld();
+    this.stopPanorama();
     this.meta = meta;
     meta.lastPlayed = Date.now();
     store.updateWorldMeta(meta);
@@ -200,6 +244,7 @@ class Game {
     this.ui.closeChat();
     this.ui.showHud(false);
     this.ui.reset('title');
+    this.startPanorama();
   }
 
   finishLoading() {
@@ -314,6 +359,7 @@ class Game {
     }
     try {
       if (this.world) this.tick(dt);
+      else if (this.pano) this.renderPanorama(dt);
     } catch (err) {
       console.error(err);
       this.ui.showError(`The game crashed: ${err.message}`);
@@ -346,6 +392,7 @@ class Game {
 
     const active = this.state !== 'paused';
     const playing = this.state === 'playing' && input.locked;
+    input.enabled = this.state === 'playing';
 
     if (playing) this.handleInput(dt);
     else if (this.state === 'inventory') this.handleInventoryKeys();
@@ -398,7 +445,7 @@ class Game {
     p.pitch = clamp(p.pitch, -Math.PI / 2 + 0.001, Math.PI / 2 - 0.001);
     p.yaw = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
-    if (input.wheel) this.selectSlot(this.selected + input.wheel);
+    if (input.wheel) this.selectSlot(this.selected + Math.sign(input.wheel));
     for (let i = 1; i <= 9; i++) if (input.wasPressed(`Digit${i}`)) this.selectSlot(i - 1);
 
     if (input.wasDoubleTapped('Space')) {
