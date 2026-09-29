@@ -1,0 +1,11 @@
+{
+  "name": "blockcraft",
+  "version": "1.0.0",
+  "description": "A Minecraft-style voxel sandbox written from scratch in WebGL2, running in the browser.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js 8080"
+  },
+  "license": "MIT"
+}

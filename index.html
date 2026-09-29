@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blockcraft</title>
+    <meta name="description" content="A Minecraft-style voxel sandbox written from scratch in WebGL2." />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <canvas id="game" tabindex="-1"></canvas>
+
+    <div id="hud" hidden>
+      <div id="underwater"></div>
+      <div id="crosshair"></div>
+      <div id="debug" hidden></div>
+      <div id="fps" hidden></div>
+      <div id="chat-log"></div>
+      <div id="item-name"></div>
+      <div id="hotbar"></div>
+      <div id="toast"></div>
+      <form id="chat" hidden autocomplete="off">
+        <input id="chat-input" spellcheck="false" maxlength="120" />
+      </form>
+      <div id="click-to-play" hidden><span>Click to play</span></div>
+    </div>
+
+    <div id="inventory" class="overlay" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <span>Blocks</span>
+          <input id="inv-search" placeholder="Search…" spellcheck="false" />
+        </div>
+        <div id="inv-grid" class="slot-grid"></div>
+        <div id="inv-hotbar" class="slot-grid hotbar-row"></div>
+        <p class="hint">Click a block to put it in the selected slot · hover a block and press 1–9 to assign · E to close</p>
+      </div>
+      <div id="tooltip" hidden></div>
+    </div>
+
+    <div id="screens">
+      <section id="screen-title" class="screen dirt">
+        <div class="logo-wrap">
+          <h1 class="logo">BLOCKCRAFT</h1>
+          <div class="splash">Now in your browser!</div>
+        </div>
+        <div class="menu">
+          <button data-action="singleplayer">Singleplayer</button>
+          <button data-action="settings">Options…</button>
+          <button data-action="controls">Controls</button>
+        </div>
+        <div class="footer">Written from scratch: WebGL2, no engine, no image assets.</div>
+      </section>
+
+      <section id="screen-worlds" class="screen dirt" hidden>
+        <h2>Select World</h2>
+        <div id="world-list" class="list"></div>
+        <div class="menu grid2">
+          <button data-action="play-world" id="btn-play" disabled>Play Selected World</button>
+          <button data-action="create-world">Create New World</button>
+          <button data-action="delete-world" id="btn-delete" disabled>Delete</button>
+          <button data-action="back">Cancel</button>
+        </div>
+      </section>
+
+      <section id="screen-create" class="screen dirt" hidden>
+        <h2>Create New World</h2>
+        <div class="form">
+          <label>World Name<input id="new-name" maxlength="32" value="New World" spellcheck="false" /></label>
+          <label>Seed for the World Generator<input id="new-seed" placeholder="Leave blank for a random seed" spellcheck="false" /></label>
+        </div>
+        <div class="menu grid2">
+          <button data-action="confirm-create">Create New World</button>
+          <button data-action="back">Cancel</button>
+        </div>
+      </section>
+
+      <section id="screen-pause" class="screen shade" hidden>
+        <h2>Game Menu</h2>
+        <div class="menu">
+          <button data-action="resume">Back to Game</button>
+          <button data-action="settings">Options…</button>
+          <button data-action="controls">Controls</button>
+          <button data-action="quit">Save and Quit to Title</button>
+        </div>
+      </section>
+
+      <section id="screen-settings" class="screen dirt" hidden>
+        <h2>Options</h2>
+        <div class="settings">
+          <label class="slider">Render Distance: <b data-out="renderDistance"></b> chunks<input type="range" min="2" max="16" data-setting="renderDistance" /></label>
+          <label class="slider">FOV: <b data-out="fov"></b><input type="range" min="50" max="110" data-setting="fov" /></label>
+          <label class="slider">Mouse Sensitivity: <b data-out="sensitivity"></b>%<input type="range" min="10" max="300" step="5" data-setting="sensitivity" /></label>
+          <label class="slider">Volume: <b data-out="volume"></b>%<input type="range" min="0" max="100" step="5" data-setting="volume" /></label>
+          <label class="slider">Render Scale: <b data-out="renderScale"></b>%<input type="range" min="30" max="100" step="10" data-setting="renderScale" /></label>
+          <label class="check"><input type="checkbox" data-setting="invertY" /> Invert Mouse</label>
+          <label class="check"><input type="checkbox" data-setting="viewBobbing" /> View Bobbing</label>
+          <label class="check"><input type="checkbox" data-setting="clouds" /> Clouds</label>
+          <label class="check"><input type="checkbox" data-setting="showFps" /> Show FPS</label>
+        </div>
+        <div class="menu"><button data-action="back">Done</button></div>
+      </section>
+
+      <section id="screen-controls" class="screen dirt" hidden>
+        <h2>Controls</h2>
+        <table class="controls">
+          <tr><td>W A S D</td><td>Move</td></tr>
+          <tr><td>Mouse</td><td>Look around</td></tr>
+          <tr><td>Space</td><td>Jump · swim up · fly up</td></tr>
+          <tr><td>Space ×2</td><td>Toggle flying</td></tr>
+          <tr><td>Shift</td><td>Sneak · fly down</td></tr>
+          <tr><td>Ctrl / R / W×2</td><td>Sprint</td></tr>
+          <tr><td>Left click</td><td>Break block</td></tr>
+          <tr><td>Right click</td><td>Place block · light TNT</td></tr>
+          <tr><td>Middle click</td><td>Pick block</td></tr>
+          <tr><td>1–9 / wheel</td><td>Select hotbar slot</td></tr>
+          <tr><td>E</td><td>Block inventory</td></tr>
+          <tr><td>T or /</td><td>Chat &amp; commands (/help)</td></tr>
+          <tr><td>F1 · F3</td><td>Hide HUD · debug info</td></tr>
+          <tr><td>Esc</td><td>Pause</td></tr>
+        </table>
+        <div class="menu"><button data-action="back">Done</button></div>
+      </section>
+
+      <section id="screen-loading" class="screen dirt" hidden>
+        <h2>Generating terrain…</h2>
+        <div class="progress"><div id="load-bar"></div></div>
+        <p id="load-text"></p>
+      </section>
+
+      <section id="screen-error" class="screen dirt" hidden>
+        <h2>Something went wrong</h2>
+        <p id="error-text"></p>
+      </section>
+    </div>
+
+    <noscript><p class="noscript">Blockcraft needs JavaScript and WebGL2.</p></noscript>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>
