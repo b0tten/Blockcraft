@@ -32,6 +32,8 @@ You need a browser with WebGL2: any current Chrome, Edge, Firefox or Safari.
 - **Multiple save slots** in `localStorage`, with autosave
 - Chat commands: `/time set night`, `/tp`, `/give`, `/seed` and more (`/help`)
 - Settings: render distance, FOV, sensitivity, render scale, volume, view bobbing, clouds
+- Touch controls for phones and tablets
+- A live, slowly rotating world behind the title screen
 
 ## Controls
 
@@ -51,6 +53,8 @@ You need a browser with WebGL2: any current Chrome, Edge, Firefox or Safari.
 | T or / | Chat and commands |
 | F1 / F3 | Hide HUD / debug overlay |
 | Esc | Pause |
+
+On phones and tablets: use the left-side joystick to move, drag anywhere to look, tap to place, press and hold to break, ↑ to jump (double-tap to fly), ↓ to sneak or fly down, and tap hotbar slots to select them.
 
 ## How it works
 
@@ -72,6 +76,7 @@ src/
   sky.js                   day/night colours and light levels
   audio.js                 Web Audio sound synthesis
   input.js, ui.js          pointer lock, keyboard/mouse, DOM UI
+  touch.js                 on-screen joystick and buttons
   storage.js               settings and world saves
   world/
     generator.js           terrain, biomes, caves, ores, trees (pure, runs in workers)

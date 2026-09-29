@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Blockcraft</title>
     <meta name="description" content="A Minecraft-style voxel sandbox written from scratch in WebGL2." />
     <link rel="icon" href="data:," />
@@ -10,6 +10,15 @@
   </head>
   <body>
     <canvas id="game" tabindex="-1"></canvas>
+
+    <div id="touch" hidden>
+      <div id="touch-area"></div>
+      <div id="joy" hidden><div id="joy-knob"></div></div>
+      <button id="t-pause" class="tbtn small" aria-label="Pause">II</button>
+      <button id="t-inv" class="tbtn small" aria-label="Inventory">&#9776;</button>
+      <button id="t-sneak" class="tbtn" aria-label="Sneak / fly down">&#8595;</button>
+      <button id="t-jump" class="tbtn" aria-label="Jump (double-tap to fly)">&#8593;</button>
+    </div>
 
     <div id="hud" hidden>
       <div id="underwater"></div>

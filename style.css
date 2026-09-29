@@ -588,3 +588,87 @@ input[type='checkbox'] {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------------ touch */
+
+#touch {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+#touch-area {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+#joy {
+  position: absolute;
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+#joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  transform: translate(-50%, -50%);
+}
+.tbtn {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  font-size: 26px;
+  background: rgba(40, 40, 40, 0.45);
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  box-shadow: none;
+  color: #fff;
+  touch-action: none;
+}
+.tbtn:hover,
+.tbtn:focus-visible {
+  background: rgba(40, 40, 40, 0.45);
+  box-shadow: none;
+  color: #fff;
+}
+.tbtn:active {
+  background: rgba(255, 255, 255, 0.35);
+}
+.tbtn.small {
+  width: 44px;
+  height: 44px;
+  font-size: 18px;
+}
+#t-jump {
+  right: 24px;
+  bottom: calc(var(--slot) + 40px);
+}
+#t-sneak {
+  right: 100px;
+  bottom: calc(var(--slot) + 28px);
+  width: 52px;
+  height: 52px;
+}
+#t-pause {
+  right: 12px;
+  top: 12px;
+}
+#t-inv {
+  right: 64px;
+  top: 12px;
+}
+body.touch-mode #hotbar .slot {
+  pointer-events: auto;
+}
+body.touch-mode #crosshair {
+  opacity: 0.7;
+}

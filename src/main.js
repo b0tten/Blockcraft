@@ -5,6 +5,7 @@ import { World } from './world/world.js';
 import { BIOME_NAMES } from './world/generator.js';
 import { Player } from './player.js';
 import { Input } from './input.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 import { UI } from './ui.js';
 import { Sound } from './audio.js';
 import { Particles } from './particles.js';
@@ -58,6 +59,8 @@ class Game {
 
     this.input = new Input(this.canvas);
     this.input.onLockChange = (locked) => this.onLockChange(locked);
+    this.touch = new TouchControls(this);
+    if (isTouchDevice() && !localStorage.getItem('blockcraft:settings')) this.settings.renderDistance = 5;
     this.applySettings();
     this.ui.reset('title');
 
@@ -239,6 +242,7 @@ class Game {
     this.stopWorld();
     this.input.exitLock();
     this.input.enabled = false;
+    this.touch.show(false);
     this.state = 'title';
     this.ui.closeInventory();
     this.ui.closeChat();
@@ -262,8 +266,13 @@ class Game {
     this.input.enabled = true;
     this.ui.reset(null);
     this.ui.showHud(true);
-    this.ui.setClickToPlay(true);
-    this.ui.log(`Welcome to ${this.meta.name}! Press E for blocks, T for chat, /help for commands.`);
+    this.ui.setClickToPlay(!this.touch.enabled);
+    this.touch.show(true);
+    this.ui.log(
+      this.touch.enabled
+        ? `Welcome to ${this.meta.name}! Drag to look, tap to place, hold to break. Double-tap ↑ to fly.`
+        : `Welcome to ${this.meta.name}! Press E for blocks, T for chat, /help for commands.`,
+    );
   }
 
   findSafeSpawn(x0, z0) {
@@ -297,6 +306,7 @@ class Game {
 
   pause() {
     this.state = 'paused';
+    this.touch.show(false);
     this.ui.setClickToPlay(false);
     this.ui.reset('pause');
     this.save();
@@ -308,12 +318,17 @@ class Game {
     this.ui.reset(null);
     this.ui.closeInventory();
     this.ui.showHud(true);
+    if (this.touch.enabled) {
+      this.touch.show(true);
+      return;
+    }
     this.ui.setClickToPlay(!this.input.locked);
     this.input.requestLock();
   }
 
   openInventory() {
     this.state = 'inventory';
+    this.touch.show(false);
     this.input.exitLock();
     this.ui.openInventory();
   }
@@ -325,8 +340,17 @@ class Game {
 
   openChat(prefix) {
     this.state = 'chat';
+    this.touch.show(false);
     this.input.exitLock();
     this.ui.openChat(prefix);
+  }
+
+  toggleFly() {
+    const p = this.player;
+    if (!p) return;
+    p.flying = !p.flying;
+    if (p.flying) p.vel[1] = 0;
+    this.ui.toast(p.flying ? 'Flying' : 'Walking', 900);
   }
 
   selectSlot(i) {
@@ -391,7 +415,7 @@ class Game {
     }
 
     const active = this.state !== 'paused';
-    const playing = this.state === 'playing' && input.locked;
+    const playing = this.state === 'playing' && (input.locked || this.touch.active);
     input.enabled = this.state === 'playing';
 
     if (playing) this.handleInput(dt);
@@ -426,33 +450,36 @@ class Game {
   moveInput() {
     const k = (c) => this.input.down(c);
     if (!k('KeyW') && !k('ArrowUp')) this.sprintLatch = false;
+    const t = this.touch;
     return {
-      forward: k('KeyW') || k('ArrowUp'),
+      forward: k('KeyW') || k('ArrowUp') || t.moveZ < -0.25,
       back: k('KeyS') || k('ArrowDown'),
       left: k('KeyA') || k('ArrowLeft'),
       right: k('KeyD') || k('ArrowRight'),
-      jump: k('Space'),
-      sneak: k('ShiftLeft') || k('ShiftRight'),
-      sprint: k('ControlLeft') || k('ControlRight') || k('KeyR') || this.sprintLatch,
+      jump: k('Space') || t.jump,
+      sneak: k('ShiftLeft') || k('ShiftRight') || t.sneak,
+      sprint: k('ControlLeft') || k('ControlRight') || k('KeyR') || this.sprintLatch || Math.hypot(t.moveX, t.moveZ) > 0.97,
+      // Analog joystick (overrides the digital keys when non-zero).
+      ax: t.moveX,
+      az: t.moveZ,
     };
   }
 
   handleInput(dt) {
     const input = this.input, p = this.player, s = this.settings;
     const sens = (s.sensitivity / 100) * 0.0022;
-    p.yaw -= input.mouseDX * sens;
-    p.pitch -= input.mouseDY * sens * (s.invertY ? -1 : 1);
+    const [tdx, tdy] = this.touch.consumeLook();
+    const dx = input.mouseDX + tdx * 1.6, dy = input.mouseDY + tdy * 1.6;
+    p.yaw -= dx * sens;
+    p.pitch -= dy * sens * (s.invertY ? -1 : 1);
+    if (this.touch.active) this.touch.update();
     p.pitch = clamp(p.pitch, -Math.PI / 2 + 0.001, Math.PI / 2 - 0.001);
     p.yaw = ((p.yaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     if (input.wheel) this.selectSlot(this.selected + Math.sign(input.wheel));
     for (let i = 1; i <= 9; i++) if (input.wasPressed(`Digit${i}`)) this.selectSlot(i - 1);
 
-    if (input.wasDoubleTapped('Space')) {
-      p.flying = !p.flying;
-      if (p.flying) p.vel[1] = 0;
-      this.ui.toast(p.flying ? 'Flying' : 'Walking', 900);
-    }
+    if (input.wasDoubleTapped('Space')) this.toggleFly();
     if (input.wasDoubleTapped('KeyW')) this.sprintLatch = true;
     if (input.wasPressed('F3')) this.debug = !this.debug;
     if (input.wasPressed('F1')) {
