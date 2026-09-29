@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node server.js 8080"
+    "start": "node server.js 8080",
+    "build": "node scripts/build-site.mjs"
   },
   "license": "MIT"
 }

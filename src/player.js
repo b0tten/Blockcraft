@@ -50,12 +50,17 @@ export class Player {
 
     // Movement intent in local space.
     let fx = 0, fz = 0;
-    if (input.forward) fz -= 1;
-    if (input.back) fz += 1;
-    if (input.left) fx -= 1;
-    if (input.right) fx += 1;
+    if (input.ax || input.az) {
+      fx = input.ax;
+      fz = input.az;
+    } else {
+      if (input.forward) fz -= 1;
+      if (input.back) fz += 1;
+      if (input.left) fx -= 1;
+      if (input.right) fx += 1;
+    }
     const len = Math.hypot(fx, fz);
-    if (len > 0) { fx /= len; fz /= len; }
+    if (len > 1) { fx /= len; fz /= len; }
     const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
     const wx = fx * cy + fz * sy;
     const wz = -fx * sy + fz * cy;

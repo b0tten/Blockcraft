@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Blockcraft</title>
     <meta name="description" content="A Minecraft-style voxel sandbox written from scratch in WebGL2." />
     <link rel="icon" href="data:," />
@@ -10,6 +10,15 @@
   </head>
   <body>
     <canvas id="game" tabindex="-1"></canvas>
+
+    <div id="touch" hidden>
+      <div id="touch-area"></div>
+      <div id="joy" hidden><div id="joy-knob"></div></div>
+      <button id="t-pause" class="tbtn small" aria-label="Pause">II</button>
+      <button id="t-inv" class="tbtn small" aria-label="Inventory">&#9776;</button>
+      <button id="t-sneak" class="tbtn" aria-label="Sneak / fly down">&#8595;</button>
+      <button id="t-jump" class="tbtn" aria-label="Jump (double-tap to fly)">&#8593;</button>
+    </div>
 
     <div id="hud" hidden>
       <div id="underwater"></div>
@@ -40,7 +49,7 @@
     </div>
 
     <div id="screens">
-      <section id="screen-title" class="screen dirt">
+      <section id="screen-title" class="screen pano">
         <div class="logo-wrap">
           <h1 class="logo">BLOCKCRAFT</h1>
           <div class="splash">Now in your browser!</div>
@@ -53,7 +62,7 @@
         <div class="footer">Written from scratch: WebGL2, no engine, no image assets.</div>
       </section>
 
-      <section id="screen-worlds" class="screen dirt" hidden>
+      <section id="screen-worlds" class="screen pano dim" hidden>
         <h2>Select World</h2>
         <div id="world-list" class="list"></div>
         <div class="menu grid2">
@@ -64,7 +73,7 @@
         </div>
       </section>
 
-      <section id="screen-create" class="screen dirt" hidden>
+      <section id="screen-create" class="screen pano dim" hidden>
         <h2>Create New World</h2>
         <div class="form">
           <label>World Name<input id="new-name" maxlength="32" value="New World" spellcheck="false" /></label>
@@ -136,6 +145,17 @@
     </div>
 
     <noscript><p class="noscript">Blockcraft needs JavaScript and WebGL2.</p></noscript>
+    <script>
+      // ES modules can't load from file:// — explain instead of showing a dead menu.
+      if (location.protocol === 'file:') {
+        document.addEventListener('DOMContentLoaded', function () {
+          document.getElementById('screen-title').hidden = true;
+          document.getElementById('error-text').innerHTML =
+            'Blockcraft has to be served over HTTP.<br>Run <b>npm start</b> (or <b>python3 -m http.server 8080</b>) in the project folder and open <b>http://localhost:8080</b>.';
+          document.getElementById('screen-error').hidden = false;
+        });
+      }
+    </script>
     <script type="module" src="src/main.js"></script>
   </body>
 </html>

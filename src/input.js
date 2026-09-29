@@ -37,6 +37,8 @@ export class Input {
     });
     document.addEventListener('mousemove', (e) => {
       if (!this.locked) return;
+      // Some browsers occasionally report a bogus huge jump right after locking.
+      if (Math.abs(e.movementX) > 350 || Math.abs(e.movementY) > 350) return;
       this.mouseDX += e.movementX;
       this.mouseDY += e.movementY;
     });
