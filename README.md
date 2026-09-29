@@ -2,7 +2,13 @@
 
 A Minecraft-style voxel sandbox that runs in the browser, written from scratch: raw WebGL2, plain JavaScript modules, no engine, no libraries, and no image files. Every texture is painted procedurally at startup.
 
-## Running it
+## Play online (GitHub Pages)
+
+Every push to the repository's default branch is built and published by `.github/workflows/pages.yml`, so the game is served at `https://<user>.github.io/<repo>/`. To turn it on for a fork or new repo, open **Settings → Pages** and set **Source** to **GitHub Actions** (one time); the next push deploys it. The workflow can also be run by hand from the **Actions** tab.
+
+`npm run build` produces the exact folder that gets published (`dist/`: just the HTML, CSS and `src/`), so you can check it locally or drop it on any other static host.
+
+## Running it locally
 
 ES modules and web workers must be served over HTTP (opening `index.html` from disk won't work):
 
@@ -60,7 +66,9 @@ On phones and tablets: use the left-side joystick to move, drag anywhere to look
 
 ```
 index.html, style.css      page shell, menus and HUD
-server.js                  tiny static file server
+server.js                  tiny static file server for local play
+scripts/build-site.mjs     copies the game files into dist/ for hosting
+.github/workflows/         GitHub Pages deployment
 src/
   main.js                  game loop, interaction, commands
   constants.js, math.js    shared constants, matrix helpers, frustum culling
