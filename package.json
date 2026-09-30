@@ -6,7 +6,11 @@
   "private": true,
   "scripts": {
     "start": "node server.js 8080",
+    "server": "node server/index.js",
     "build": "node scripts/build-site.mjs"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -22,6 +22,7 @@
 
     <div id="hud" hidden>
       <div id="underwater"></div>
+      <div id="nametags"></div>
       <div id="crosshair"></div>
       <div id="debug" hidden></div>
       <div id="fps" hidden></div>
@@ -56,6 +57,7 @@
         </div>
         <div class="menu">
           <button data-action="singleplayer">Singleplayer</button>
+          <button data-action="multiplayer">Multiplayer</button>
           <button data-action="settings">Options…</button>
           <button data-action="controls">Controls</button>
         </div>
@@ -85,13 +87,36 @@
         </div>
       </section>
 
+      <section id="screen-multiplayer" class="screen pano dim" hidden>
+        <h2>Play Multiplayer</h2>
+        <div class="form">
+          <label>Server Address<input id="mp-address" maxlength="200" placeholder="play.example.com:8765" spellcheck="false" autocomplete="off" /></label>
+          <label>Your Name<input id="mp-name" maxlength="16" placeholder="Letters, digits and _" spellcheck="false" autocomplete="off" /></label>
+        </div>
+        <p id="mp-status"></p>
+        <div class="menu grid2">
+          <button data-action="join-server">Join Server</button>
+          <button data-action="back">Cancel</button>
+        </div>
+        <p class="note">Host your own server with <b>npm run server</b> (see the README).</p>
+      </section>
+
+      <section id="screen-disconnected" class="screen dirt" hidden>
+        <h2 id="disc-title">Disconnected</h2>
+        <p id="disc-text"></p>
+        <div class="menu">
+          <button data-action="reconnect">Reconnect</button>
+          <button data-action="back">Back to Title Screen</button>
+        </div>
+      </section>
+
       <section id="screen-pause" class="screen shade" hidden>
         <h2>Game Menu</h2>
         <div class="menu">
           <button data-action="resume">Back to Game</button>
           <button data-action="settings">Options…</button>
           <button data-action="controls">Controls</button>
-          <button data-action="quit">Save and Quit to Title</button>
+          <button data-action="quit" id="btn-quit">Save and Quit to Title</button>
         </div>
       </section>
 
@@ -133,9 +158,10 @@
       </section>
 
       <section id="screen-loading" class="screen dirt" hidden>
-        <h2>Generating terrain…</h2>
+        <h2 id="load-title">Generating terrain…</h2>
         <div class="progress"><div id="load-bar"></div></div>
         <p id="load-text"></p>
+        <div class="menu"><button data-action="quit" id="btn-cancel-load" hidden>Cancel</button></div>
       </section>
 
       <section id="screen-error" class="screen dirt" hidden>

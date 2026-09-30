@@ -215,6 +215,38 @@ body {
   padding: 6px 8px;
 }
 
+#nametags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.nametag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 6px;
+  background: rgba(0, 0, 0, 0.4);
+  font-size: 14px;
+  white-space: nowrap;
+  text-shadow: none;
+  will-change: transform;
+}
+.nametag.sneak {
+  opacity: 0.45;
+}
+#mp-status {
+  min-height: 1.5em;
+  margin: 0;
+  color: #ff8a8a;
+}
+#mp-status.info {
+  color: #d8d8d8;
+}
+.screen p.note {
+  font-size: 12px;
+  color: #c8c8c8;
+}
+
 #click-to-play {
   position: absolute;
   inset: 0;

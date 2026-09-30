@@ -10,7 +10,10 @@ import { UI } from './ui.js';
 import { Sound } from './audio.js';
 import { Particles } from './particles.js';
 import { Fluids } from './fluids.js';
-import { PrimedTNT, explode } from './entities.js';
+import { PrimedTNT, explode, explosionEffects } from './entities.js';
+import { Connection, serverURL } from './net/client.js';
+import { RemotePlayers, AVATAR_TEXTURES } from './net/players.js';
+import { F_FLYING, F_SNEAKING, NAME_RE, NAME_RULES, SERVER_COMMANDS } from './net/protocol.js';
 import { buildHand } from './hand.js';
 import { raycast, blockBounds } from './raycast.js';
 import { environment, lightBrightness, timeLabel } from './sky.js';
@@ -39,6 +42,9 @@ class Game {
     this.state = 'title';
     this.hotbar = [...DEFAULT_HOTBAR];
     this.selected = 0;
+    this.net = null; // multiplayer connection once joined
+    this.pendingNet = null; // ... while joining
+    this.remote = null; // other players
     window.game = this; // handy from the dev console
 
     try {
@@ -49,8 +55,9 @@ class Game {
       return;
     }
 
-    const tex = buildTextureArray(allTextureNames());
+    const tex = buildTextureArray([...allTextureNames(), ...AVATAR_TEXTURES]);
     resolveTextures((name) => tex.layers.get(name));
+    this.texLayers = tex.layers;
     this.renderer.setTextures(tex);
     this.icons = makeIcons(tex);
     this.ui.setBackground(textureDataURL(tex, 'dirt'));
@@ -193,6 +200,11 @@ class Game {
     this.dayCycle = data?.dayCycle ?? true;
     this.hotbar = data?.hotbar?.length === 9 ? data.hotbar.map((id) => (BLOCKS[id] ? id : 0)) : [...DEFAULT_HOTBAR];
     this.selected = data?.selected ?? 0;
+    this.beginSession();
+  }
+
+  // State shared by singleplayer and multiplayer sessions; ends on the loading screen.
+  beginSession() {
     this.entities = [];
     this.particles = new Particles();
     this.target = null;
@@ -206,20 +218,203 @@ class Game {
     this.saveTimer = 0;
     this.state = 'loading';
     this.ui.setLoading(0, '');
+    this.ui.setLoadingTitle(this.net ? `Joining ${this.meta.name}…` : 'Generating terrain…', !!this.net);
     this.ui.reset('loading');
     this.ui.updateHotbar(this.hotbar, this.selected);
   }
 
   stopWorld() {
+    this.closeConnection();
     if (!this.world) return;
     this.save();
     this.world.dispose();
     this.world = null;
+    this.remote?.clear();
+    this.remote = null;
     this.renderer.worldSprites.clear();
     this.renderer.handSprites.clear();
   }
 
+  // ------------------------------------------------------------ multiplayer
+
+  joinServer(address, name) {
+    let url;
+    try {
+      url = serverURL(address);
+    } catch (err) {
+      this.ui.setMpStatus(err.message);
+      return;
+    }
+    if (!NAME_RE.test(name)) {
+      this.ui.setMpStatus(NAME_RULES);
+      return;
+    }
+    store.saveMultiplayer({ ...store.loadMultiplayer(), address, name });
+    this.lastServer = { address, name };
+    this.stopWorld();
+    this.ui.setLoading(0, address);
+    this.ui.setLoadingTitle('Connecting to the server…', true);
+    this.ui.reset('loading');
+    const conn = new Connection(url, name, {
+      onMessage: (m) => this.onNetMessage(conn, m),
+      onClose: (reason) => this.onNetClose(conn, reason),
+    });
+    this.pendingNet = conn;
+  }
+
+  reconnect() {
+    if (this.lastServer) this.joinServer(this.lastServer.address, this.lastServer.name);
+    else this.ui.reset('title');
+  }
+
+  closeConnection() {
+    this.pendingNet?.close();
+    this.pendingNet = null;
+    this.net?.close();
+    this.net = null;
+  }
+
+  onNetClose(conn, reason) {
+    if (conn !== this.net && conn !== this.pendingNet) return;
+    const joined = conn === this.net;
+    if (joined) this.net = null;
+    else this.pendingNet = null;
+    this.leaveGame();
+    this.ui.showDisconnected(joined ? 'Disconnected' : 'Could not join the server', reason);
+  }
+
+  startRemoteWorld(conn, msg) {
+    this.pendingNet = null;
+    this.net = conn;
+    this.stopPanorama();
+    this.meta = { name: String(msg.server || 'Server'), seed: msg.seed | 0, remote: true };
+    this.welcome = msg;
+    const renderer = this.renderer;
+    this.world = new World(msg.seed, {
+      onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
+      onUnloaded: (c) => renderer.deleteChunk(c),
+      remote: { request: (cx, cz) => conn.subscribe(cx, cz), drop: (cx, cz) => conn.unsubscribe(cx, cz) },
+    });
+    this.world.setRenderDistance(this.settings.renderDistance);
+    this.fluids = null; // the server runs liquids
+    this.player = new Player();
+    const p = this.player, sp = msg.spawn, you = msg.you;
+    this.spawnPoint = { x: sp[0], y: sp[1], z: sp[2] };
+    this.needsSpawn = false;
+    if (you) {
+      p.pos = [...you.pos];
+      p.yaw = you.yaw;
+      p.pitch = you.pitch;
+      p.flying = !!you.flying;
+    } else {
+      p.pos = [...sp];
+      p.yaw = Math.PI * 0.75;
+    }
+    this.time = msg.time;
+    this.dayCycle = !!msg.cycle;
+    const saved = store.loadMultiplayer();
+    this.hotbar = saved.hotbar?.length === 9 ? saved.hotbar.map((id) => (BLOCKS[id] ? id : 0)) : [...DEFAULT_HOTBAR];
+    this.selected = 0;
+    this.remote = new RemotePlayers(this.texLayers, document.getElementById('nametags'));
+    for (const o of msg.players) this.remote.add(o.id, o.name);
+    this.lastSent = null;
+    this.netTimer = 0;
+    this.beginSession();
+  }
+
+  onNetMessage(conn, m) {
+    if (m.t === 'welcome' && conn === this.pendingNet) return this.startRemoteWorld(conn, m);
+    if (conn !== this.net || !this.world) return;
+    const w = this.world;
+    switch (m.t) {
+      case 'blocks':
+        w.applyRemoteBlocks(m.b);
+        break;
+      case 'chunk':
+        w.receiveEdits(m.cx, m.cz, m.e);
+        break;
+      case 'players':
+        this.remote.setStates(m.s);
+        break;
+      case 'join':
+        this.remote.add(m.id, m.name);
+        this.ui.log(`${m.name} joined the game`);
+        break;
+      case 'leave':
+        this.remote.remove(m.id);
+        this.ui.log(`${m.name} left the game`);
+        break;
+      case 'chat':
+        this.ui.log(String(m.m));
+        break;
+      case 'time':
+        this.time = m.v;
+        this.dayCycle = !!m.c;
+        break;
+      case 'swing':
+        this.remote.swing(m.id);
+        break;
+      case 'tnt': {
+        const e = new PrimedTNT(m.x, m.y, m.z, m.f);
+        e.remote = true; // the server decides when and how it explodes
+        this.entities.push(e);
+        if (this.near(m.x, m.y, m.z, 24)) this.sound.fuse();
+        break;
+      }
+      case 'boom':
+        this.onBoom(m);
+        break;
+      case 'fx': {
+        const b = BLOCKS[m.id];
+        if (!b || !this.near(m.x, m.y, m.z, 32)) break;
+        if (m.k === 'break') {
+          this.particles.blockBreak(m.x, m.y, m.z, m.id);
+          this.sound.blockBreak(b.sound);
+        } else this.sound.blockPlace(b.sound);
+        break;
+      }
+    }
+  }
+
+  onBoom(m) {
+    let best = -1, bestD = 2.5;
+    this.entities.forEach((e, i) => {
+      const d = Math.hypot(e.x - m.x, e.y + 0.5 - m.y, e.z - m.z);
+      if (e.remote && d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    if (best >= 0) this.entities.splice(best, 1);
+    const debris = [];
+    for (let i = 0; i + 3 < m.d.length; i += 4) if (BLOCKS[m.d[i + 3]]) debris.push(m.d.slice(i, i + 4));
+    explosionEffects(this, m.x, m.y, m.z, m.r, debris);
+  }
+
+  near(x, y, z, r) {
+    const p = this.player.pos;
+    return (x - p[0]) ** 2 + (y - p[1]) ** 2 + (z - p[2]) ** 2 < r * r;
+  }
+
+  // Tell the server where we are, ~20 times a second while anything changes.
+  sendState(dt) {
+    this.netTimer += dt;
+    if (this.netTimer < 0.05) return;
+    const p = this.player;
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    const s = [r3(p.pos[0]), r3(p.pos[1]), r3(p.pos[2]), r3(p.yaw), r3(p.pitch), (p.flying ? F_FLYING : 0) | (p.sneaking ? F_SNEAKING : 0)];
+    const last = this.lastSent;
+    if (last && this.netTimer < 1 && s.every((v, i) => v === last[i])) return;
+    this.netTimer = 0;
+    this.lastSent = s;
+    this.net.send({ t: 'pos', p: s.slice(0, 3), r: s.slice(3, 5), f: s[5], ms: Math.round(performance.now()) });
+  }
+
   save() {
+    if (this.meta?.remote && this.world) {
+      store.saveMultiplayer({ ...store.loadMultiplayer(), hotbar: this.hotbar });
+      return;
+    }
     if (!this.world || !this.meta || this.state === 'loading') return;
     const p = this.player;
     const ok = store.saveWorldData(this.meta.id, {
@@ -239,6 +434,11 @@ class Game {
   }
 
   quitToTitle() {
+    this.leaveGame();
+    this.ui.reset('title');
+  }
+
+  leaveGame() {
     this.stopWorld();
     this.input.exitLock();
     this.input.enabled = false;
@@ -247,7 +447,6 @@ class Game {
     this.ui.closeInventory();
     this.ui.closeChat();
     this.ui.showHud(false);
-    this.ui.reset('title');
     this.startPanorama();
   }
 
@@ -273,6 +472,12 @@ class Game {
         ? `Welcome to ${this.meta.name}! Drag to look, tap to place, hold to break. Double-tap ↑ to fly.`
         : `Welcome to ${this.meta.name}! Press E for blocks, T for chat, /help for commands.`,
     );
+    if (this.net) {
+      const w = this.welcome;
+      if (w.motd) this.ui.log(String(w.motd));
+      const others = this.remote.names();
+      this.ui.log(others.length ? `Also online: ${others.join(', ')}` : 'Nobody else is online yet.');
+    }
   }
 
   findSafeSpawn(x0, z0) {
@@ -308,6 +513,7 @@ class Game {
     this.state = 'paused';
     this.touch.show(false);
     this.ui.setClickToPlay(false);
+    this.ui.setQuitLabel(this.net ? 'Disconnect' : 'Save and Quit to Title');
     this.ui.reset('pause');
     this.save();
   }
@@ -410,11 +616,14 @@ class Game {
       const center = w.getChunk(pcx, pcz);
       const meshed = !!(center && center.mesh);
       this.ui.setLoading((ready + (meshed ? 1 : 0)) / (total + 1), `Building terrain… ${w.chunks.size} chunks`);
+      this.net?.flush();
       if (ready === total && meshed) this.finishLoading();
       return;
     }
 
-    const active = this.state !== 'paused';
+    // A server world keeps going while the menu is open.
+    const online = !!this.net;
+    const active = this.state !== 'paused' || online;
     const playing = this.state === 'playing' && (input.locked || this.touch.active);
     input.enabled = this.state === 'playing';
 
@@ -425,12 +634,12 @@ class Game {
       const events = p.update(dt, playing ? this.moveInput() : NO_INPUT, w);
       this.playerSounds(events);
       if (this.dayCycle) this.time = (this.time + dt / DAY_LENGTH_SECONDS) % 1;
-      this.fluids.update(dt);
+      this.fluids?.update(dt);
       for (let i = this.entities.length - 1; i >= 0; i--) {
         const e = this.entities[i];
         if (e.update(dt, w)) {
           this.entities.splice(i, 1);
-          explode(this, e.x, e.y + 0.5, e.z, 4);
+          if (!e.remote) explode(this, e.x, e.y + 0.5, e.z, 4);
         }
       }
       this.particles.update(dt, w);
@@ -440,11 +649,16 @@ class Game {
       this.saveTimer += dt;
       if (this.saveTimer > AUTOSAVE_SECONDS) this.save();
     }
+    if (online) {
+      this.remote.update(dt);
+      this.sendState(dt);
+    }
 
     w.update(p.pos[0], p.pos[2], 6);
     this.updateTarget();
     this.render();
     this.updateHud(dt);
+    this.net?.flush();
   }
 
   moveInput() {
@@ -526,13 +740,17 @@ class Game {
 
   // ------------------------------------------------------------ interaction
 
+  // In multiplayer, edits show immediately and are sent to the server, which confirms
+  // them by broadcasting the change or corrects them by sending the real block back.
   breakBlock() {
     this.swing = 0;
+    this.net?.send({ t: 'swing' });
     const t = this.target;
     if (!t) return;
     const id = t.block;
     this.world.setBlock(t.x, t.y, t.z, 0);
-    this.fluids.notifyRemoved(t.x, t.y, t.z);
+    if (this.net) this.net.send({ t: 'set', x: t.x, y: t.y, z: t.z, id: 0 });
+    else this.fluids.notifyRemoved(t.x, t.y, t.z);
     this.particles.blockBreak(t.x, t.y, t.z, id);
     this.sound.blockBreak(BLOCKS[id].sound);
     this.world.flushNear(t.x, t.z);
@@ -544,8 +762,13 @@ class Game {
     const w = this.world, p = this.player;
     if (t.block === B.tnt && !p.sneaking) {
       w.setBlock(t.x, t.y, t.z, 0);
-      this.entities.push(new PrimedTNT(t.x, t.y, t.z, 4));
-      this.sound.fuse();
+      if (this.net) {
+        this.net.send({ t: 'ignite', x: t.x, y: t.y, z: t.z });
+        this.net.send({ t: 'swing' });
+      } else {
+        this.entities.push(new PrimedTNT(t.x, t.y, t.z, 4));
+        this.sound.fuse();
+      }
       this.swing = 0;
       w.flushNear(t.x, t.z);
       return;
@@ -561,13 +784,17 @@ class Game {
     if (y < 0 || y >= WORLD_HEIGHT) return;
     const cur = w.getBlock(x, y, z);
     if (cur !== 0 && !REPLACEABLE[cur]) return;
-    if (SOLID[id] && p.intersectsBlock(x, y, z)) return;
+    if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.remote?.intersectsBlock(x, y, z))) return;
     if (NEEDS_SUPPORT[id]) {
       const below = w.getBlock(x, y - 1, z);
       const supported = SOLID[below] || (id === B.sugar_cane && below === B.sugar_cane);
       if (!supported && !(id === B.torch && t.ny === 0)) return;
     }
     w.setBlock(x, y, z, id);
+    if (this.net) {
+      this.net.send({ t: 'set', x, y, z, id });
+      this.net.send({ t: 'swing' });
+    }
     this.sound.blockPlace(BLOCKS[id].sound);
     this.swing = 0;
     w.flushNear(x, z);
@@ -618,6 +845,7 @@ class Game {
     const ws = this.renderer.worldSprites;
     ws.clear();
     for (const e of this.entities) e.draw(ws, cam, w, env.sunlight);
+    this.remote?.draw(ws, cam, w, env.sunlight, (w.renderDistance + 1) * 16);
     this.particles.build(ws, cam, w, env.sunlight);
 
     const hs = this.renderer.handSprites;
@@ -651,6 +879,7 @@ class Game {
       inLava: p.headInLava,
       clouds: s.clouds,
     });
+    this.remote?.updateTags(this.renderer.viewProj, cam, this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
   updateHud(dt) {
@@ -688,23 +917,33 @@ class Game {
       t ? `Target: ${BLOCKS[t.block].name} @ ${t.x} ${t.y} ${t.z}` : 'Target: —',
       `Seed: ${w.seed}`,
     ];
+    if (this.net) lines.push(`Server: ${this.meta.name}, ${this.remote.size + 1} online`);
     this.ui.setDebug(lines.join('\n'));
   }
 
   // ------------------------------------------------------------ chat commands
 
   runChat(text) {
-    if (!text.startsWith('/')) {
+    const command = text.startsWith('/');
+    const [cmdRaw, ...args] = command ? text.slice(1).split(/\s+/) : [];
+    const cmd = (cmdRaw || '').toLowerCase();
+    // Online, chat and world-wide commands (time, player list) go to the server.
+    if (this.net && (!command || SERVER_COMMANDS.has(cmd))) {
+      this.net.send({ t: 'chat', m: text });
+      return;
+    }
+    if (!command) {
       this.ui.log(`<Player> ${text}`);
       return;
     }
-    const [cmdRaw, ...args] = text.slice(1).split(/\s+/);
-    const cmd = (cmdRaw || '').toLowerCase();
     const p = this.player;
     const log = (m) => this.ui.log(m);
     switch (cmd) {
       case 'help':
-        log('Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /rd <2-16>, /give <block>');
+        log(
+          'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /rd <2-16>, /give <block>' +
+            (this.net ? ', /list' : ''),
+        );
         break;
       case 'time': {
         if (args[0] === 'set' && args[1] !== undefined) {

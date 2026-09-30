@@ -18,9 +18,59 @@ npm start            # zero-dependency Node server on http://localhost:8080
 python3 -m http.server 8080
 ```
 
-Then open <http://localhost:8080>. Any static host (e.g. GitHub Pages) works too; there is no build step.
+Then open <http://localhost:8080>. Any static host (e.g. GitHub Pages) works too; there is no build step. For multiplayer, see [Multiplayer server](#multiplayer-server).
 
 You need a browser with WebGL2: any current Chrome, Edge, Firefox or Safari.
+
+## Multiplayer server
+
+`server/` is a dedicated server you can run on your own machine or VPS. It needs Node.js 20 or newer and nothing else (no `npm install`):
+
+```sh
+npm run server                        # same as: node server/index.js
+node server/index.js --port 8765 --world data/world --name "My Server" --motd "Be nice!"
+```
+
+Open the port (TCP 8765 by default) in your firewall or router. The server also hosts the game itself, so players just open `http://your-server:8765/`, click **Multiplayer**, pick a name and join (the address is filled in for them). From a copy of the game hosted anywhere else, type the server's address (`host`, `host:port` or a full `ws://` / `wss://` URL).
+
+| Option | Environment | Default | |
+| --- | --- | --- | --- |
+| `--port` | `PORT` | `8765` | HTTP and WebSocket port |
+| `--host` | `HOST` | all interfaces | address to listen on |
+| `--world` | `WORLD_DIR` | `data/world` | world folder (created if missing) |
+| `--seed` | `SEED` | random | seed for a new world |
+| `--name`, `--motd` | `SERVER_NAME`, `MOTD` | | shown to players |
+| `--max-players` | `MAX_PLAYERS` | `20` | |
+| `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | serve `https://` and `wss://` |
+
+Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
+
+**Joining from GitHub Pages.** Pages are served over `https`, and browsers only let `https` pages open *secure* WebSocket connections. Either play from the server's own address (above), or give the server a TLS certificate for its domain, for example from Let's Encrypt: `--tls-cert /etc/letsencrypt/live/example.com/fullchain.pem --tls-key /etc/letsencrypt/live/example.com/privkey.pem`. A reverse proxy (Caddy, nginx) that terminates TLS and forwards WebSocket upgrades works too.
+
+To keep it running, use a process manager, for example a systemd unit:
+
+```ini
+[Unit]
+Description=Blockcraft server
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/blockcraft
+ExecStart=/usr/bin/node server/index.js --port 8765 --name "My Server"
+Restart=on-failure
+User=blockcraft
+
+[Install]
+WantedBy=multi-user.target
+```
+
+What is shared: block edits, explosions, flowing water and lava, the time of day, chat and everyone's position (other players appear as blocky avatars with name tags). The server checks every edit (reach, block type, not inside another player) and has the final say. You see your own edits immediately, and the server corrects them if it refuses one. Chat commands in multiplayer: `/list`; `/time` and `/daycycle` change the time for everyone.
+
+Current limits:
+
+- **No accounts.** Anyone who can reach the port can join under any name that isn't already online, and a player's saved position belongs to their name. Don't expose a server you care about to the whole internet; restrict the port with a firewall if needed.
+- Movement is trusted from each player's browser, so flying and `/tp` work as in singleplayer.
+- Hotbars are kept in each player's browser.
 
 ## Features
 
@@ -36,6 +86,7 @@ You need a browser with WebGL2: any current Chrome, Edge, Firefox or Safari.
 - Walking, sprinting, sneaking (it stops you walking off edges), jumping and flying
 - Synthesised sound effects (Web Audio, no samples)
 - **Multiple save slots** in `localStorage`, with autosave
+- **Multiplayer** through a dependency-free dedicated server (see above)
 - Chat commands: `/time set night`, `/tp`, `/give`, `/seed` and more (`/help`)
 - Settings: render distance, FOV, sensitivity, render scale, volume, view bobbing, clouds
 - Touch controls for phones and tablets
@@ -69,7 +120,17 @@ index.html, style.css      page shell, menus and HUD
 server.js                  tiny static file server for local play
 scripts/build-site.mjs     copies the game files into dist/ for hosting
 .github/workflows/         GitHub Pages deployment
+server/                    multiplayer server (Node, imports the game code from src/)
+  index.js                 options, HTTP hosting of the game, console, shutdown
+  game.js                  sessions, edit checks, liquids, TNT, time, chat, 20 Hz tick
+  world.js                 server-side world: terrain from the seed plus edits
+  websocket.js             minimal WebSocket (RFC 6455) server
+  storage.js               world folder persistence
 src/
+  net/
+    protocol.js            multiplayer message reference, shared with the server
+    client.js              connection and server address handling
+    players.js             other players: smoothed movement, avatars, name tags
   main.js                  game loop, interaction, commands
   constants.js, math.js    shared constants, matrix helpers, frustum culling
   noise.js                 seeded PRNG and simplex noise
@@ -90,6 +151,7 @@ src/
     generator.js           terrain, biomes, caves, ores, trees (pure, runs in workers)
     worker.js              terrain generation worker
     world.js               chunk streaming, block edits, save format
+    edits.js               edit maps and their compact JSON form
     lighting.js            incremental BFS light propagation and removal
     mesher.js              face culling, AO and smooth light into packed vertices
   render/
@@ -103,3 +165,5 @@ src/
 - Each vertex packs into 16 bytes (position, texture layer, UV, face, AO, sky and block light). All quads share one index buffer, and textures live in a `TEXTURE_2D_ARRAY` so mipmaps don't bleed.
 - Rendering is camera-relative, so precision holds far from the origin. Chunks are frustum-culled and drawn front-to-back; water is drawn back-to-front afterwards.
 - Saves store only the blocks you changed, keyed by chunk, and replay them on top of the regenerated terrain.
+- Multiplayer never sends terrain. The browser and the server both generate it from the seed; when a player loads a chunk the server sends that chunk's edits, then streams every later change in order, so all players converge on the server's copy. The server runs the same generator, liquid and TNT code as the browser. Messages are JSON over WebSocket and are listed in `src/net/protocol.js`.
+- Other players' positions are stamped with the sender's clock and replayed 120 ms behind, so their movement stays smooth even when packets arrive unevenly.
