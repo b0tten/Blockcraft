@@ -4,7 +4,9 @@
 
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
-import { readFileSync } from 'node:fs';
+import { createServer as createNetServer } from 'node:net';
+import { X509Certificate } from 'node:crypto';
+import { readFileSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { basename, extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,12 +31,14 @@ Usage: node server/index.js [options]
   --max-players <n>   player limit (default 20, env MAX_PLAYERS)
   --border <chunks>   world border: this many chunks each way from spawn (env BORDER)
   --reset-days <n>    start a fresh world every n days, e.g. 7 or 0.5 (env RESET_DAYS)
-  --tls-cert <file>   certificate (PEM) to serve https:// and wss:// (env TLS_CERT)
+  --tls-cert <file>   certificate (PEM) to also serve https:// and wss:// (env TLS_CERT);
+                      plain http:// keeps working on the same port, and renewed
+                      certificate files are picked up automatically
   --tls-key <file>    private key (PEM) for --tls-cert (env TLS_KEY)
   -h, --help          show this help
 
 Console commands: help, list, say <message>, kick <name> [reason], time set <time>,
-daycycle <on|off>, reset, save, stop`;
+daycycle <on|off>, reset, cert, save, stop`;
 
 const { values: opt } = parseArgs({
   options: {
@@ -139,11 +143,8 @@ async function handle(req, res) {
 }
 
 const secure = !!(tlsCert && tlsKey);
-const server = secure
-  ? createHttpsServer({ cert: readFileSync(tlsCert), key: readFileSync(tlsKey) }, handle)
-  : createHttpServer(handle);
 
-server.on('upgrade', (req, socket, head) => {
+function onUpgrade(req, socket, head) {
   socket.on('error', () => {});
   if (game.clients.size >= config.maxPlayers + 20) {
     socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
@@ -151,7 +152,68 @@ server.on('upgrade', (req, socket, head) => {
   }
   const ws = acceptUpgrade(req, socket, head, { maxMessage: 1 << 16 });
   if (ws) game.connect(ws, req.socket.remoteAddress || '?');
-});
+}
+
+const httpServer = createHttpServer(handle);
+httpServer.on('upgrade', onUpgrade);
+
+// ------------------------------------------------------------ TLS (optional) and certificate renewal
+
+const tls = { mtimes: '', expires: 0, warnedDay: '' };
+
+function readCertificate() {
+  const cert = readFileSync(tlsCert), key = readFileSync(tlsKey);
+  tls.mtimes = `${statSync(tlsCert).mtimeMs}/${statSync(tlsKey).mtimeMs}`;
+  tls.expires = Date.parse(new X509Certificate(cert).validTo);
+  return { cert, key };
+}
+
+function certificateStatus() {
+  const days = (tls.expires - Date.now()) / 86400000;
+  const when = new Date(tls.expires).toLocaleString();
+  if (days <= 0) return `The TLS certificate EXPIRED on ${when}: https/wss joins fail, but http://<this server's IP>:${port}/ still works. Renew it and it is picked up automatically.`;
+  return `TLS certificate valid until ${when} (${Math.floor(days)} days left)`;
+}
+
+// Load renewed certificate files without a restart, and warn (daily) when expiry is near.
+function checkCertificate(force = false) {
+  try {
+    const mtimes = `${statSync(tlsCert).mtimeMs}/${statSync(tlsKey).mtimeMs}`;
+    if (force || mtimes !== tls.mtimes) {
+      httpsServer.setSecureContext(readCertificate());
+      log(`Loaded the TLS certificate again. ${certificateStatus()}`);
+    }
+  } catch (err) {
+    log(`Could not reload the TLS certificate (keeping the current one): ${err.message}`);
+  }
+  const days = (tls.expires - Date.now()) / 86400000;
+  const today = new Date().toDateString();
+  if (days < 14 && tls.warnedDay !== today) {
+    tls.warnedDay = today;
+    log(days <= 0 ? certificateStatus() : `Warning: the TLS certificate expires in ${Math.max(0, Math.floor(days))} days (${new Date(tls.expires).toLocaleString()}). Renew it soon.`);
+  }
+}
+
+let httpsServer = null;
+let server = httpServer;
+if (secure) {
+  httpsServer = createHttpsServer(readCertificate(), handle);
+  httpsServer.on('upgrade', onUpgrade);
+  // One port, both protocols: a TLS connection starts with a handshake record (byte 0x16),
+  // anything else is plain HTTP. So http://ip:port keeps working even if the certificate lapses.
+  server = createNetServer((socket) => {
+    socket.on('error', () => {});
+    socket.setTimeout(15000, () => socket.destroy());
+    socket.once('data', (first) => {
+      socket.setTimeout(0);
+      socket.pause();
+      socket.unshift(first);
+      (first[0] === 0x16 ? httpsServer : httpServer).emit('connection', socket);
+      process.nextTick(() => socket.resume());
+    });
+  });
+  setInterval(() => checkCertificate(), 3600 * 1000).unref();
+}
 
 server.on('error', (err) => {
   log(`Server error: ${err.message}`);
@@ -159,12 +221,15 @@ server.on('error', (err) => {
 });
 
 server.listen(port, host, () => {
-  const scheme = secure ? 'https' : 'http';
   log(`${config.name} is running on port ${port} (protocol v${PROTOCOL_VERSION}, up to ${config.maxPlayers} players)`);
   if (config.border) log(`World border: ${config.border} chunks each way from spawn`);
   if (game.nextReset) log(`The world resets every ${config.resetDays} day(s); next reset ${new Date(game.nextReset).toLocaleString()}`);
-  log(`Play: open ${scheme}://<this server's address>:${port}/ and choose Multiplayer`);
-  if (!secure) log('Tip: pages served over https (like GitHub Pages) can only join a server that has --tls-cert/--tls-key');
+  log(`Play: open http://<this server's IP or domain>:${port}/ and choose Multiplayer`);
+  if (secure) {
+    log(`https://<your domain>:${port}/ and wss:// work too, so players can also join from https pages like GitHub Pages`);
+    checkCertificate();
+    log(certificateStatus());
+  } else log('Tip: pages served over https (like GitHub Pages) can only join a server that has --tls-cert/--tls-key');
 });
 
 // ------------------------------------------------------------ console and shutdown
@@ -189,7 +254,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     case '':
       return;
     case 'help':
-      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, reset, save, stop');
+      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, reset, cert, save, stop');
     case 'say':
       return args.length && game.announce(`[Server] ${args.join(' ')}`);
     case 'kick': {
@@ -200,6 +265,9 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     }
     case 'reset':
       return game.resetWorld();
+    case 'cert':
+      if (!secure) return log('TLS is off (start with --tls-cert and --tls-key to enable it)');
+      return checkCertificate(true);
     case 'save':
       await game.save();
       return log('World saved');

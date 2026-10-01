@@ -43,15 +43,17 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 | `--max-players` | `MAX_PLAYERS` | `20` | |
 | `--border` | `BORDER` | off | world border: chunks each way from spawn |
 | `--reset-days` | `RESET_DAYS` | off | start a fresh world every *n* days (`7`, `0.5`, …) |
-| `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | serve `https://` and `wss://` |
+| `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | also serve `https://` and `wss://` |
 
 **World border.** With `--border 32`, the world is a 64×64-chunk square (1024×1024 blocks) centred on spawn. Players who walk or teleport past it are sent back to spawn, and blocks outside it can't be changed (water and explosions stop at it too). Since only changed blocks are stored, this caps how big the world files can get.
 
 **Scheduled resets.** With `--reset-days 7`, the world starts over a week after it was created: everyone is warned in chat (1 hour, 10 minutes, 1 minute and 10 seconds before), then disconnected, and all edits and saved positions are wiped. The new world gets a random seed, or `--seed`'s if you set one. The schedule survives server restarts, and typing `reset` in the console resets right away.
 
-Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `reset`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
+Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `reset`, `cert`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
 
 **Joining from GitHub Pages.** Pages are served over `https`, and browsers only let `https` pages open *secure* WebSocket connections. Either play from the server's own address (above), or give the server a TLS certificate for its domain, for example from Let's Encrypt: `--tls-cert /etc/letsencrypt/live/example.com/fullchain.pem --tls-key /etc/letsencrypt/live/example.com/privkey.pem`. A reverse proxy (Caddy, nginx) that terminates TLS and forwards WebSocket upgrades works too.
+
+With a certificate, the port serves **both** `https://` and plain `http://`. So if the certificate ever lapses, players can still open `http://<server IP>:8765/` and play. The server checks the certificate files every hour and loads renewed ones without a restart, so a `certbot renew` cron job is enough. It also warns in its log daily during the last 14 days before expiry. Type `cert` in the console to see the expiry date, or to reload the files right away.
 
 To keep it running, use a process manager, for example a systemd unit:
 
