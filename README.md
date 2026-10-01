@@ -41,9 +41,15 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 | `--seed` | `SEED` | random | seed for a new world |
 | `--name`, `--motd` | `SERVER_NAME`, `MOTD` | | shown to players |
 | `--max-players` | `MAX_PLAYERS` | `20` | |
+| `--border` | `BORDER` | off | world border: chunks each way from spawn |
+| `--reset-days` | `RESET_DAYS` | off | start a fresh world every *n* days (`7`, `0.5`, …) |
 | `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | serve `https://` and `wss://` |
 
-Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
+**World border.** With `--border 32`, the world is a 64×64-chunk square (1024×1024 blocks) centred on spawn. Players who walk or teleport past it are sent back to spawn, and blocks outside it can't be changed (water and explosions stop at it too). Since only changed blocks are stored, this caps how big the world files can get.
+
+**Scheduled resets.** With `--reset-days 7`, the world starts over a week after it was created: everyone is warned in chat (1 hour, 10 minutes, 1 minute and 10 seconds before), then disconnected, and all edits and saved positions are wiped. The new world gets a random seed, or `--seed`'s if you set one. The schedule survives server restarts, and typing `reset` in the console resets right away.
+
+Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `reset`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
 
 **Joining from GitHub Pages.** Pages are served over `https`, and browsers only let `https` pages open *secure* WebSocket connections. Either play from the server's own address (above), or give the server a TLS certificate for its domain, for example from Let's Encrypt: `--tls-cert /etc/letsencrypt/live/example.com/fullchain.pem --tls-key /etc/letsencrypt/live/example.com/privkey.pem`. A reverse proxy (Caddy, nginx) that terminates TLS and forwards WebSocket upgrades works too.
 

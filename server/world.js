@@ -16,6 +16,7 @@ export class ServerWorld {
     this.edits = edits; // chunkKey -> Map(index -> id): the persistent part of the world
     this.chunks = new Map(); // chunkKey -> { blocks, used }: a cache, rebuilt when needed
     this.changes = []; // x, y, z, id of every write since the last takeChanges()
+    this.allow = () => true; // (x, z) -> may blocks there change? (the world border)
     this.dirty = false;
     this.clock = 0;
   }
@@ -54,7 +55,7 @@ export class ServerWorld {
   setBlocks(list) {
     let n = 0;
     for (const [x, y, z, id] of list) {
-      if (y < 0 || y >= H) continue;
+      if (y < 0 || y >= H || !this.allow(x, z)) continue;
       const c = this.chunk(x >> 4, z >> 4);
       const i = (x & 15) | ((z & 15) << 4) | (y << 8);
       if (c.blocks[i] === id) continue;

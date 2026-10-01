@@ -27,6 +27,7 @@
 //   boom    { x, y, z, r, d: [x, y, z, id, ...] }   explosion (d = blocks to show debris for)
 //   fx      { k: 'break' | 'place', x, y, z, id }   another player's edit, for particles and sound
 //   swing   { id }
+//   tp      { p: [x, y, z] }           move the player (e.g. back from the world border)
 
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_PORT = 8765;

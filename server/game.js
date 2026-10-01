@@ -52,18 +52,67 @@ export class GameServer {
     this.dir = dir;
     this.config = config; // { name, motd, maxPlayers }
     this.meta = meta; // { name, seed, spawn, time, dayCycle, created }
-    this.world = new ServerWorld(meta.seed, edits);
-    this.fluids = new Fluids(this.world);
+    this.newWorld(meta.seed, edits);
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
     this.clients = new Set();
     this.byId = new Map(); // joined players
     this.nextId = 1;
-    this.tnts = [];
-    this.events = [];
     this.ticks = 0;
     this.log = log;
     this.saving = null;
     if (!meta.spawn) meta.spawn = this.world.findSpawn();
+    this.warned = new Set();
+  }
+
+  newWorld(seed, edits) {
+    this.world = new ServerWorld(seed, edits);
+    this.world.allow = (x, z) => this.inBorder(x, z);
+    this.fluids = new Fluids(this.world);
+    this.tnts = [];
+    this.events = [];
+  }
+
+  // The world border: a square of config.border chunks each way around spawn (0 = none).
+  inBorder(x, z) {
+    const b = this.config.border * 16, s = this.meta.spawn;
+    if (!b || !s) return true;
+    return Math.abs(Math.floor(x) - Math.floor(s[0])) < b && Math.abs(Math.floor(z) - Math.floor(s[2])) < b;
+  }
+
+  // ------------------------------------------------------------ scheduled resets
+
+  get nextReset() {
+    return this.config.resetDays > 0 ? this.meta.created + this.config.resetDays * 86400000 : null;
+  }
+
+  checkReset() {
+    const at = this.nextReset;
+    if (at === null) return;
+    const left = at - Date.now();
+    // Announce only the nearest of these, once each.
+    const due = [[10000, '10 seconds'], [60000, '1 minute'], [600000, '10 minutes'], [3600000, '1 hour']].find(([ms]) => left > 0 && left <= ms);
+    if (due && !this.warned.has(due[0])) {
+      this.warned.add(due[0]);
+      this.announce(`The world will be reset in ${due[1]}.`);
+    }
+    if (left <= 0) this.resetWorld();
+  }
+
+  // Start over with fresh terrain: everyone is disconnected and all edits and positions go.
+  async resetWorld() {
+    if (this.resetting) return;
+    this.resetting = true;
+    for (const c of [...this.clients]) this.kick(c, 'The world is being reset. Join again in a moment!');
+    const seed = this.config.seed ?? Math.floor(Math.random() * 2147483647);
+    this.meta = { ...this.meta, seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
+    this.newWorld(seed, new Map());
+    this.saved = {};
+    this.meta.spawn = this.world.findSpawn();
+    this.warned = new Set();
+    await this.saving;
+    await this.save();
+    this.log(`World reset (new seed ${seed})`);
+    this.resetting = false;
   }
 
   start() {
@@ -219,6 +268,11 @@ export class GameServer {
     c.flags = isInt(m.f) ? m.f & (F_FLYING | F_SNEAKING) : 0;
     c.ms = isNum(m.ms) ? Math.round(m.ms) : null;
     c.moved = true;
+    if (!this.inBorder(c.pos[0], c.pos[2])) {
+      c.pos = [...this.meta.spawn];
+      this.send(c, { t: 'tp', p: c.pos });
+      this.send(c, { t: 'chat', m: 'You reached the world border and were sent back to spawn.' });
+    }
   }
 
   chunkList(c, m) {
@@ -290,6 +344,7 @@ export class GameServer {
     const { x, y, z, id } = m;
     if (!this.validPos(x, y, z) || !isInt(id)) return;
     if (!this.inReach(c, x, y, z)) return this.correct(c, x, y, z, !this.near(c, x, z, 32));
+    if (!this.inBorder(x, z)) return this.correct(c, x, y, z);
     const block = BLOCKS[id];
     if (!block || (id !== 0 && !block.inventory) || !c.edits.take()) return this.correct(c, x, y, z);
     const w = this.world;
@@ -312,6 +367,7 @@ export class GameServer {
     const { x, y, z } = m;
     if (!this.validPos(x, y, z)) return;
     if (!this.inReach(c, x, y, z)) return this.correct(c, x, y, z, !this.near(c, x, z, 32));
+    if (!this.inBorder(x, z)) return this.correct(c, x, y, z);
     if (!c.edits.take() || this.world.getBlock(x, y, z) !== B.tnt) return this.correct(c, x, y, z);
     this.world.setBlock(x, y, z, 0);
     this.spawnTnt(x, y, z, 4);
@@ -413,6 +469,7 @@ export class GameServer {
       w.evict(keep, 60);
     }
     if (every(60)) this.save();
+    if (every(1)) this.checkReset();
   }
 
   // Send each client the block changes in chunks it has loaded, in order.
