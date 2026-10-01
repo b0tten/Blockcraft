@@ -7,13 +7,20 @@ import { Chunk } from './chunk.js';
 import { LightEngine } from './lighting.js';
 import { buildChunkMesh } from './mesher.js';
 import { TerrainGenerator, BIOME } from './generator.js';
+import { chunkCoords, editsFromArray, serializeEdits, deserializeEdits } from './edits.js';
 
 export class World {
-  constructor(seed, { edits, onMeshed, onUnloaded } = {}) {
+  // `remote` ({ request(cx, cz), drop(cx, cz) }) switches to multiplayer: a chunk's edits
+  // come from the server, and a generated chunk waits until they have arrived.
+  constructor(seed, { edits, onMeshed, onUnloaded, remote } = {}) {
     this.seed = seed | 0;
     this.chunks = new Map();
     this.edits = edits || new Map(); // chunkKey -> Map(index -> block id)
     this.editsDirty = false;
+    this.remote = remote || null;
+    this.subscribed = new Set(); // chunk keys whose edits we asked the server for
+    this.editsReady = new Set(); // ... and whose edits have arrived
+    this.held = new Map(); // generated chunks waiting for their edits
     this.light = new LightEngine(this);
     this.generator = new TerrainGenerator(this.seed);
     this.renderDistance = 8;
@@ -203,13 +210,15 @@ export class World {
       const [cx, cz, key] = next;
       w.job = key;
       this.pending.add(key);
+      this.requestEdits(cx, cz, key);
       w.postMessage({ seed: this.seed, cx, cz });
     }
     if (this.useFallback) {
       for (let n = 0; n < 2; n++) {
         const next = this.nextWanted();
         if (!next) break;
-        const [cx, cz] = next;
+        const [cx, cz, key] = next;
+        this.requestEdits(cx, cz, key);
         const r = this.generator.generate(cx, cz);
         this.arrived.push({ cx, cz, blocks: r.blocks, biomes: r.biomes });
         if (performance.now() - t0 > budgetMs * 0.5) break;
@@ -230,7 +239,14 @@ export class World {
     this.pending.delete(key);
     if (this.chunks.has(key)) return;
     const lim = this.renderDistance + 2.5;
-    if ((cx - pcx) ** 2 + (cz - pcz) ** 2 > lim * lim) return;
+    if ((cx - pcx) ** 2 + (cz - pcz) ** 2 > lim * lim) {
+      this.dropEdits(key);
+      return;
+    }
+    if (this.remote && !this.editsReady.has(key)) {
+      this.held.set(key, data);
+      return;
+    }
     const c = new Chunk(cx, cz, data.blocks, data.biomes);
     const edits = this.edits.get(key);
     if (edits) {
@@ -298,8 +314,71 @@ export class World {
       if ((c.cx - pcx) ** 2 + (c.cz - pcz) ** 2 > lim * lim) {
         this.onUnloaded(c);
         this.chunks.delete(c.key);
+        this.dropEdits(c.key);
       }
     }
+    for (const key of [...this.held.keys()]) {
+      const [cx, cz] = chunkCoords(key);
+      if ((cx - pcx) ** 2 + (cz - pcz) ** 2 > lim * lim) this.dropEdits(key);
+    }
+  }
+
+  // ------------------------------------------------------------------ multiplayer
+
+  requestEdits(cx, cz, key) {
+    if (!this.remote || this.subscribed.has(key)) return;
+    this.subscribed.add(key);
+    this.remote.request(cx, cz);
+  }
+
+  dropEdits(key) {
+    if (!this.remote) return;
+    this.held.delete(key);
+    this.editsReady.delete(key);
+    this.edits.delete(key);
+    if (this.subscribed.delete(key)) {
+      const [cx, cz] = chunkCoords(key);
+      this.remote.drop(cx, cz);
+    }
+  }
+
+  // The server's full edit list for a chunk we subscribed to.
+  receiveEdits(cx, cz, arr) {
+    const key = chunkKey(cx, cz);
+    if (!this.subscribed.has(key)) return;
+    const m = editsFromArray(arr);
+    this.editsReady.add(key);
+    const c = this.chunks.get(key);
+    if (c) {
+      // Already built from an older copy (we re-subscribed): apply whatever differs.
+      const list = [];
+      for (const [i, id] of m) if (c.blocks[i] !== id) list.push([cx * 16 + (i & 15), i >> 8, cz * 16 + ((i >> 4) & 15), id]);
+      if (list.length) this.setBlocks(list);
+      return;
+    }
+    this.edits.set(key, m);
+    const held = this.held.get(key);
+    if (held) {
+      this.held.delete(key);
+      this.arrived.push(held);
+    }
+  }
+
+  // Block changes broadcast by the server: [x, y, z, id, ...].
+  applyRemoteBlocks(flat) {
+    const list = [];
+    for (let i = 0; i + 3 < flat.length; i += 4) {
+      const x = flat[i], y = flat[i + 1], z = flat[i + 2], id = flat[i + 3];
+      if (y < 0 || y >= H) continue;
+      const key = chunkKey(x >> 4, z >> 4);
+      if (this.chunks.has(key)) list.push([x, y, z, id]);
+      else if (this.editsReady.has(key)) {
+        let m = this.edits.get(key);
+        if (!m) this.edits.set(key, (m = new Map()));
+        m.set((x & 15) | ((z & 15) << 4) | (y << 8), id);
+      }
+    }
+    if (list.length) this.setBlocks(list);
   }
 
   setRenderDistance(r) {
@@ -341,29 +420,11 @@ export class World {
     return SEA_LEVEL + 1;
   }
 
-  // Serialise edits: { "cx,cz": [index, id, index, id, ...] }
   serializeEdits() {
-    const out = {};
-    for (const [key, m] of this.edits) {
-      if (!m.size) continue;
-      const cx = Math.floor(key / 65536) - 32768, cz = (key % 65536) - 32768;
-      const arr = [];
-      for (const [i, id] of m) arr.push(i, id);
-      out[`${cx},${cz}`] = arr;
-    }
-    return out;
+    return serializeEdits(this.edits);
   }
 
   static deserializeEdits(obj) {
-    const edits = new Map();
-    if (!obj) return edits;
-    for (const k of Object.keys(obj)) {
-      const [cx, cz] = k.split(',').map(Number);
-      const arr = obj[k];
-      const m = new Map();
-      for (let i = 0; i < arr.length; i += 2) m.set(arr[i], arr[i + 1]);
-      edits.set(chunkKey(cx, cz), m);
-    }
-    return edits;
+    return deserializeEdits(obj);
   }
 }

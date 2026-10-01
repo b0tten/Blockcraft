@@ -41,6 +41,15 @@ export function saveSettings(s) {
   write('settings', s);
 }
 
+// Last server address and player name used for multiplayer.
+export function loadMultiplayer() {
+  return read('multiplayer', {});
+}
+
+export function saveMultiplayer(v) {
+  write('multiplayer', v);
+}
+
 export function listWorlds() {
   const list = read('worlds', []);
   return list.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));

@@ -689,6 +689,33 @@ const WOOL_RGB = {
 };
 for (const c of WOOL_COLORS) PAINTERS[`wool_${c}`] = (t) => wool(t, WOOL_RGB[c]);
 
+// Other players' avatars (multiplayer). The shirt and trousers reuse wool textures.
+const SKIN = [196, 144, 106];
+const HAIR = [72, 48, 30];
+function hairRows(t, rows) {
+  for (let y = 0; y < rows; y++) for (let x = 0; x < 16; x++) t.set(x, y, scale(HAIR, 0.85 + t.rand() * 0.3));
+}
+PAINTERS.avatar_skin = (t) => t.speckle(SKIN, 0.06);
+PAINTERS.avatar_hair = (t) => t.speckle(HAIR, 0.3);
+PAINTERS.avatar_head = (t) => {
+  t.speckle(SKIN, 0.06);
+  hairRows(t, 4);
+  for (let x = 0; x < 16; x++) if (t.rand() < 0.5) t.set(x, 4, scale(HAIR, 0.9));
+};
+PAINTERS.avatar_face = (t) => {
+  t.speckle(SKIN, 0.06);
+  hairRows(t, 4);
+  for (const x of [0, 1, 14, 15]) t.set(x, 4, HAIR);
+  const white = [236, 236, 236], iris = [62, 70, 150];
+  for (const y of [8, 9]) {
+    for (const x of [2, 3, 12, 13]) t.set(x, y, white);
+    for (const x of [4, 5, 10, 11]) t.set(x, y, iris);
+  }
+  for (const [x, y] of [[7, 10], [8, 10], [7, 11], [8, 11]]) t.set(x, y, scale(SKIN, 0.82));
+  for (let x = 6; x <= 9; x++) t.set(x, 12, scale(SKIN, 0.9));
+  for (let x = 5; x <= 10; x++) t.set(x, 13, [120, 70, 52]);
+};
+
 // Give fully transparent pixels the average opaque color so mipmaps don't get dark fringes.
 function bleedTransparent(data) {
   let r = 0, g = 0, b = 0, n = 0;

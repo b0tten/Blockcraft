@@ -1,7 +1,7 @@
 // DOM side of the game: menus, hotbar, inventory, chat and debug overlay.
 
 import { BLOCKS, INVENTORY_BLOCKS } from './blocks.js';
-import { listWorlds, deleteWorld } from './storage.js';
+import { listWorlds, deleteWorld, loadMultiplayer } from './storage.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,6 +51,8 @@ export class UI {
     });
     $('new-name').addEventListener('keydown', (e) => e.key === 'Enter' && this.onAction('confirm-create'));
     $('new-seed').addEventListener('keydown', (e) => e.key === 'Enter' && this.onAction('confirm-create'));
+    $('mp-address').addEventListener('keydown', (e) => e.key === 'Enter' && this.onAction('join-server'));
+    $('mp-name').addEventListener('keydown', (e) => e.key === 'Enter' && this.onAction('join-server'));
   }
 
   setBackground(url) {
@@ -87,6 +89,16 @@ export class UI {
       case 'singleplayer':
         this.renderWorldList();
         this.push('worlds');
+        break;
+      case 'multiplayer':
+        this.openMultiplayer();
+        break;
+      case 'join-server':
+        this.setMpStatus('');
+        g.joinServer($('mp-address').value.trim(), $('mp-name').value.trim());
+        break;
+      case 'reconnect':
+        g.reconnect();
         break;
       case 'settings':
         this.syncSettings();
@@ -150,6 +162,47 @@ export class UI {
     this.selectWorld(this.selectedWorld);
   }
 
+  openMultiplayer() {
+    const saved = loadMultiplayer();
+    $('mp-address').value = saved.address || '';
+    $('mp-name').value = saved.name || `Player${Math.floor(100 + Math.random() * 900)}`;
+    this.setMpStatus('');
+    this.push('multiplayer');
+    (saved.address ? $('mp-name') : $('mp-address')).focus();
+    // When the page itself comes from a Blockcraft server, offer that server.
+    if (!saved.address && /^https?:$/.test(location.protocol)) {
+      fetch('api/info')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((info) => {
+          if (info?.game !== 'blockcraft' || $('mp-address').value) return;
+          $('mp-address').value = location.host;
+          this.setMpStatus(`${info.name}: ${info.players}/${info.max} players online`, true);
+        })
+        .catch(() => {});
+    }
+  }
+
+  setMpStatus(text, info = false) {
+    const el = $('mp-status');
+    el.textContent = text;
+    el.classList.toggle('info', info);
+  }
+
+  showDisconnected(title, reason) {
+    $('disc-title').textContent = title;
+    $('disc-text').textContent = reason;
+    this.reset('disconnected');
+  }
+
+  setLoadingTitle(text, cancellable) {
+    $('load-title').textContent = text;
+    $('btn-cancel-load').hidden = !cancellable;
+  }
+
+  setQuitLabel(text) {
+    $('btn-quit').textContent = text;
+  }
+
   selectWorld(id) {
     this.selectedWorld = id;
     for (const item of document.querySelectorAll('#world-list .item')) item.classList.toggle('selected', item.dataset.id === id);
@@ -188,7 +241,7 @@ export class UI {
   }
 
   setHudVisible(on) {
-    for (const id of ['crosshair', 'hotbar', 'item-name']) $(id).style.visibility = on ? '' : 'hidden';
+    for (const id of ['crosshair', 'hotbar', 'item-name', 'nametags']) $(id).style.visibility = on ? '' : 'hidden';
   }
 
   buildHotbar() {

@@ -42,9 +42,9 @@ export class PrimedTNT {
 
 const UNBREAKABLE = new Set([B.bedrock, B.obsidian, B.water, B.lava]);
 
-// Blow a roughly spherical hole. Returns info for effects.
-export function explode(game, x, y, z, radius = 4) {
-  const world = game.world;
+// Work out a roughly spherical hole without changing the world: `list` is the blocks to
+// clear, `chain` the TNT blocks it sets off, `debris` a few blocks to show particles for.
+export function blast(world, x, y, z, radius = 4) {
   const list = [];
   const chain = [];
   const debris = [];
@@ -62,10 +62,22 @@ export function explode(game, x, y, z, radius = 4) {
         else if (Math.random() < 0.08 && debris.length < 24) debris.push([bx, by, bz, b]);
         list.push([bx, by, bz, 0]);
       }
-  world.setBlocks(list);
+  return { list, chain, debris };
+}
+
+// Singleplayer explosion: change the world, then show it.
+export function explode(game, x, y, z, radius = 4) {
+  const { list, chain, debris } = blast(game.world, x, y, z, radius);
+  game.world.setBlocks(list);
   for (const [bx, by, bz] of list) game.fluids.notifyRemoved(bx, by, bz);
-  for (const [bx, by, bz, b] of debris) game.particles.blockBreak(bx, by, bz, b, 2);
   for (const [bx, by, bz] of chain) game.entities.push(new PrimedTNT(bx, by, bz, 0.4 + Math.random() * 0.9));
+  explosionEffects(game, x, y, z, radius, debris);
+}
+
+// Particles, sound, knockback and screen shake (the world has already changed).
+export function explosionEffects(game, x, y, z, radius, debris) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  for (const [bx, by, bz, b] of debris) game.particles.blockBreak(bx, by, bz, b, 2);
   game.particles.smoke(x, y, z, 40, radius * 0.6);
   game.sound.explosion();
 
