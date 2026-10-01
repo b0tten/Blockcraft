@@ -354,6 +354,12 @@ class Game {
       case 'swing':
         this.remote.swing(m.id);
         break;
+      case 'tp':
+        if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) {
+          this.player.pos = [...m.p];
+          this.player.vel = [0, 0, 0];
+        }
+        break;
       case 'tnt': {
         const e = new PrimedTNT(m.x, m.y, m.z, m.f);
         e.remote = true; // the server decides when and how it explodes
