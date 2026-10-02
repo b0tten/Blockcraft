@@ -31,6 +31,8 @@ npm run server                        # same as: node server/index.js
 node server/index.js --port 8765 --world data/world --name "My Server" --motd "Be nice!"
 ```
 
+With `npm run server`, put `--` before the options (`npm run server -- --border 32`), because npm keeps options written straight after the script name for itself.
+
 Open the port (TCP 8765 by default) in your firewall or router. The server also hosts the game itself, so players just open `http://your-server:8765/`, click **Multiplayer**, pick a name and join (the address is filled in for them). From a copy of the game hosted anywhere else, type the server's address (`host`, `host:port` or a full `ws://` / `wss://` URL).
 
 | Option | Environment | Default | |

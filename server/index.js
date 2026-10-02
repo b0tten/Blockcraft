@@ -40,8 +40,7 @@ Usage: node server/index.js [options]
 Console commands: help, list, say <message>, kick <name> [reason], time set <time>,
 daycycle <on|off>, reset, cert, save, stop`;
 
-const { values: opt } = parseArgs({
-  options: {
+const OPTIONS = {
     port: { type: 'string' },
     host: { type: 'string' },
     world: { type: 'string' },
@@ -54,8 +53,30 @@ const { values: opt } = parseArgs({
     'tls-cert': { type: 'string' },
     'tls-key': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
-  },
-});
+};
+
+function fail(message) {
+  console.error(`${message}\nRun with --help to see the options.`);
+  process.exit(1);
+}
+
+let parsed;
+try {
+  parsed = parseArgs({ options: OPTIONS, allowPositionals: true });
+} catch (err) {
+  fail(err.message.replace(/^TypeError \[\w+\]: /, ''));
+}
+const opt = parsed.values;
+// `npm run server --x 1` keeps --x for npm itself and passes only "1" on; with `--x=1`
+// npm passes nothing but sets npm_config_x. Accept the latter, explain the former.
+for (const [name, def] of Object.entries(OPTIONS)) {
+  const v = process.env[`npm_config_${name.replace(/-/g, '_')}`];
+  if (opt[name] === undefined && def.type === 'string' && v !== undefined && v !== 'true' && v !== '') opt[name] = v;
+}
+if (parsed.positionals.length) {
+  const npm = process.env.npm_lifecycle_event ? ' npm keeps options written straight after "npm run server" for itself; put -- before them: npm run server -- --reset-days 1' : '';
+  fail(`Unexpected argument "${parsed.positionals[0]}". Options look like --name value.${npm}`);
+}
 if (opt.help) {
   console.log(HELP);
   process.exit(0);
