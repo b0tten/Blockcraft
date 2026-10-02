@@ -51,6 +51,8 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 
 **Scheduled resets.** With `--reset-days 7`, the world starts over a week after it was created: everyone is warned in chat (1 hour, 10 minutes, 1 minute and 10 seconds before), then disconnected, and all edits and saved positions are wiped. The new world gets a random seed, or `--seed`'s if you set one. The schedule survives server restarts, and typing `reset` in the console resets right away.
 
+**Singleplayer from a server address.** Browsers keep saved worlds separately for every website, so worlds made at `http://your-server:8765/` would be stranded there. When the game is opened from a server, Singleplayer therefore first offers to open the official site, https://b0tten.github.io/Blockcraft/, where players' worlds live. "Play Here Anyway" is still available.
+
 Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `reset`, `cert`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
 
 **Joining from GitHub Pages.** Pages are served over `https`, and browsers only let `https` pages open *secure* WebSocket connections. Either play from the server's own address (above), or give the server a TLS certificate for its domain, for example from Let's Encrypt: `--tls-cert /etc/letsencrypt/live/example.com/fullchain.pem --tls-key /etc/letsencrypt/live/example.com/privkey.pem`. A reverse proxy (Caddy, nginx) that terminates TLS and forwards WebSocket upgrades works too.
