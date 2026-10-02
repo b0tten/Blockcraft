@@ -39,6 +39,9 @@ export const MAX_CHAT = 200;
 export const F_FLYING = 1;
 export const F_SNEAKING = 2;
 
+// Where singleplayer worlds live; the game sends players there when opened from a server.
+export const OFFICIAL_SITE = 'https://b0tten.github.io/Blockcraft/';
+
 export const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
 export const NAME_RULES = 'Names are 1–16 letters, digits or underscores.';
 

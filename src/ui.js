@@ -2,6 +2,7 @@
 
 import { BLOCKS, INVENTORY_BLOCKS } from './blocks.js';
 import { listWorlds, deleteWorld, loadMultiplayer } from './storage.js';
+import { OFFICIAL_SITE } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -189,13 +190,8 @@ export class UI {
 
   // The official site to send singleplayer to, if this page is served by a game server.
   officialSite() {
-    const home = this.host?.home;
-    if (!home) return null;
-    try {
-      return new URL(home).origin === location.origin ? null : home;
-    } catch {
-      return null;
-    }
+    if (!this.host || new URL(OFFICIAL_SITE).origin === location.origin) return null;
+    return OFFICIAL_SITE;
   }
 
   openMultiplayer() {

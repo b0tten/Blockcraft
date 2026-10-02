@@ -133,7 +133,7 @@ export class GameServer {
   }
 
   info() {
-    return { game: 'blockcraft', protocol: PROTOCOL_VERSION, name: this.config.name, motd: this.config.motd, players: this.byId.size, max: this.config.maxPlayers, home: this.config.homeUrl || null };
+    return { game: 'blockcraft', protocol: PROTOCOL_VERSION, name: this.config.name, motd: this.config.motd, players: this.byId.size, max: this.config.maxPlayers };
   }
 
   // ------------------------------------------------------------ connections
