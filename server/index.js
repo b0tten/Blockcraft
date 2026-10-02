@@ -18,6 +18,20 @@ import { loadWorld } from './storage.js';
 import { parseSeed } from '../src/storage.js';
 import { DEFAULT_PORT, PROTOCOL_VERSION } from '../src/net/protocol.js';
 
+const DEFAULT_HOME = 'https://b0tten.github.io/Blockcraft/';
+
+function httpUrl(text) {
+  if (!text) return '';
+  try {
+    const u = new URL(text);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch {
+    /* fall through */
+  }
+  console.error(`--home-url must be an http(s) address, got "${text}"`);
+  process.exit(1);
+}
+
 const HELP = `Blockcraft dedicated server
 
 Usage: node server/index.js [options]
@@ -31,6 +45,9 @@ Usage: node server/index.js [options]
   --max-players <n>   player limit (default 20, env MAX_PLAYERS)
   --border <chunks>   world border: this many chunks each way from spawn (env BORDER)
   --reset-days <n>    start a fresh world every n days, e.g. 7 or 0.5 (env RESET_DAYS)
+  --home-url <url>    official site that players opening this server are sent to for
+                      singleplayer, so their saved worlds stay in one place
+                      (default ${DEFAULT_HOME}, env HOME_URL; "" turns it off)
   --tls-cert <file>   certificate (PEM) to also serve https:// and wss:// (env TLS_CERT);
                       plain http:// keeps working on the same port, and renewed
                       certificate files are picked up automatically
@@ -50,6 +67,7 @@ const OPTIONS = {
     'max-players': { type: 'string' },
     border: { type: 'string' },
     'reset-days': { type: 'string' },
+    'home-url': { type: 'string' },
     'tls-cert': { type: 'string' },
     'tls-key': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
@@ -92,6 +110,7 @@ const config = {
   maxPlayers: Math.max(1, Number(opt['max-players'] ?? env.MAX_PLAYERS ?? 20) || 20),
   border: Math.max(0, Math.floor(Number(opt.border ?? env.BORDER ?? 0)) || 0),
   resetDays: Math.max(0, Number(opt['reset-days'] ?? env.RESET_DAYS ?? 0) || 0),
+  homeUrl: httpUrl(opt['home-url'] ?? env.HOME_URL ?? DEFAULT_HOME),
   seed: (opt.seed ?? env.SEED) ? parseSeed(opt.seed ?? env.SEED) : null,
 };
 const tlsCert = opt['tls-cert'] ?? env.TLS_CERT;

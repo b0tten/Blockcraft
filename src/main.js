@@ -38,6 +38,7 @@ class Game {
     this.settings = store.loadSettings();
     this.sound = new Sound();
     this.ui = new UI(this);
+    this.ui.probeHost();
     this.world = null;
     this.state = 'title';
     this.hotbar = [...DEFAULT_HOTBAR];

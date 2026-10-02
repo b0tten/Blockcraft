@@ -45,11 +45,14 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 | `--max-players` | `MAX_PLAYERS` | `20` | |
 | `--border` | `BORDER` | off | world border: chunks each way from spawn |
 | `--reset-days` | `RESET_DAYS` | off | start a fresh world every *n* days (`7`, `0.5`, …) |
+| `--home-url` | `HOME_URL` | the GitHub Pages site | where Singleplayer points players who opened the game from this server; `""` turns it off |
 | `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | also serve `https://` and `wss://` |
 
 **World border.** With `--border 32`, the world is a 64×64-chunk square (1024×1024 blocks) centred on spawn. Players who walk or teleport past it are sent back to spawn, and blocks outside it can't be changed (water and explosions stop at it too). Since only changed blocks are stored, this caps how big the world files can get.
 
 **Scheduled resets.** With `--reset-days 7`, the world starts over a week after it was created: everyone is warned in chat (1 hour, 10 minutes, 1 minute and 10 seconds before), then disconnected, and all edits and saved positions are wiped. The new world gets a random seed, or `--seed`'s if you set one. The schedule survives server restarts, and typing `reset` in the console resets right away.
+
+**Singleplayer from a server address.** Browsers keep saved worlds separately for every website, so worlds made at `http://your-server:8765/` would be stranded there. When the game is opened from a server, Singleplayer therefore first offers to open the official site (`--home-url`, by default https://b0tten.github.io/Blockcraft/), where players' worlds live. "Play Here Anyway" is still available.
 
 Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `time set`, `daycycle`, `reset`, `cert`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
 

@@ -87,6 +87,20 @@ export class UI {
     const g = this.game;
     switch (action) {
       case 'singleplayer':
+        if (this.officialSite()) {
+          $('official-text').textContent =
+            `You opened Blockcraft from ${this.host.name}. Browsers keep saved worlds separately for every website, ` +
+            'so worlds made here only exist at this address. Play singleplayer on the official site to keep all your worlds in one place.';
+          this.push('official');
+          break;
+        }
+        this.renderWorldList();
+        this.push('worlds');
+        break;
+      case 'open-official':
+        location.href = this.officialSite();
+        break;
+      case 'singleplayer-here':
         this.renderWorldList();
         this.push('worlds');
         break;
@@ -162,6 +176,28 @@ export class UI {
     this.selectWorld(this.selectedWorld);
   }
 
+  // When the page itself comes from a Blockcraft server, remember its details.
+  probeHost() {
+    if (!/^https?:$/.test(location.protocol)) return;
+    fetch('api/info')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((info) => {
+        if (info?.game === 'blockcraft') this.host = info;
+      })
+      .catch(() => {});
+  }
+
+  // The official site to send singleplayer to, if this page is served by a game server.
+  officialSite() {
+    const home = this.host?.home;
+    if (!home) return null;
+    try {
+      return new URL(home).origin === location.origin ? null : home;
+    } catch {
+      return null;
+    }
+  }
+
   openMultiplayer() {
     const saved = loadMultiplayer();
     $('mp-address').value = saved.address || '';
@@ -174,7 +210,9 @@ export class UI {
       fetch('api/info')
         .then((r) => (r.ok ? r.json() : null))
         .then((info) => {
-          if (info?.game !== 'blockcraft' || $('mp-address').value) return;
+          if (info?.game !== 'blockcraft') return;
+          this.host = info;
+          if ($('mp-address').value) return;
           $('mp-address').value = location.host;
           this.setMpStatus(`${info.name}: ${info.players}/${info.max} players online`, true);
         })
