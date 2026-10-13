@@ -430,6 +430,7 @@ export class UI {
       // Operators also get player commands, with the online players as options.
       const names = g.remote ? g.remote.names() : [];
       quick['/kick'] = names.map((n) => [n, `/kick ${n}`]);
+      quick['/ban'] = names.map((n) => [n, `/ban ${n}`]);
       quick['/tp'] = names.map((n) => [n, `/tp ${n}`]);
       quick['/deop'] = [['Give up operator', '/deop']];
     }

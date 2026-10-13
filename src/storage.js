@@ -41,6 +41,26 @@ export function saveSettings(s) {
   write('settings', s);
 }
 
+// A random ID for this browser (per website), sent to multiplayer servers so bans can
+// follow a player who changes their name.
+let sessionBrowserId = null;
+export function getBrowserId() {
+  const make = () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  };
+  try {
+    let id = localStorage.getItem(`${PREFIX}browserId`);
+    if (!id || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) {
+      id = make();
+      localStorage.setItem(`${PREFIX}browserId`, id);
+    }
+    return id;
+  } catch {
+    return (sessionBrowserId ??= make());
+  }
+}
+
 // Last server address and player name used for multiplayer.
 export function loadMultiplayer() {
   return read('multiplayer', {});

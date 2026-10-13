@@ -3,6 +3,7 @@
 //   edits.json    every changed block: { "cx,cz": [index, id, ...] }
 //   signs.json    sign text: { "cx,cz": [[index, [four lines]], ...] }
 //   players.json  last position of each player name
+//   bans.json     bans by name and by browser, and which browsers each name used
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -31,13 +32,15 @@ export async function loadWorld(dir) {
     edits: deserializeEdits(await readJSON(join(dir, 'edits.json'))),
     signs: deserializeSigns(await readJSON(join(dir, 'signs.json'))),
     players: (await readJSON(join(dir, 'players.json'))) || {},
+    bans: (await readJSON(join(dir, 'bans.json'))) || {},
   };
 }
 
-export async function saveWorld(dir, { meta, edits, signs, players }) {
+export async function saveWorld(dir, { meta, edits, signs, players, bans }) {
   await mkdir(dir, { recursive: true });
   await writeJSON(join(dir, 'edits.json'), serializeEdits(edits));
   await writeJSON(join(dir, 'signs.json'), serializeSigns(signs));
   await writeJSON(join(dir, 'players.json'), players);
+  if (bans) await writeJSON(join(dir, 'bans.json'), bans);
   await writeJSON(join(dir, 'world.json'), meta);
 }

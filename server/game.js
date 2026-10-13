@@ -26,11 +26,24 @@ const HALF_W = 0.3;
 const HEIGHT = 1.8;
 const OP_GRACE_MS = 5 * 60 * 1000;
 const sha256 = (s) => createHash('sha256').update(String(s)).digest();
-const OP_HELP = 'Operator commands: /kick <name> [reason], /tp <name>, /say <message>, /op <name>, /deop [name], /save';
-const OP_COMMANDS = new Set(['ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save']);
+const OP_HELP = 'Operator commands: /kick <name> [reason], /ban <name> [30m|2h|7d] [reason], /unban <name>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
+const OP_COMMANDS = new Set(['ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
+const BID_RE = /^[A-Za-z0-9_-]{16,64}$/;
+const DURATION = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
+// "30m", "2h", "7d" -> milliseconds, or null.
+const parseDuration = (s) => {
+  const m = /^(\d+)([smhdw])$/i.exec(String(s || ''));
+  return m ? Number(m[1]) * DURATION[m[2].toLowerCase()] : null;
+};
 const NAMED_TIMES = { day: 0.02, sunrise: 0.98, morning: 0.05, noon: 0.25, sunset: 0.48, night: 0.55, midnight: 0.75 };
 
 const isInt = Number.isInteger;
+const formatSpan = (ms) => {
+  const units = [['w', 604800000], ['d', 86400000], ['h', 3600000], ['m', 60000]];
+  for (const [u, n] of units) if (ms >= n * 0.98) return `${Math.round(ms / n)}${u}`;
+  return `${Math.max(1, Math.round(ms / 1000))}s`;
+};
+const banMessage = (e) => `You are banned from this server${e.until ? ` for another ${formatSpan(e.until - Date.now())}` : ''}${e.reason ? `: ${e.reason}` : '.'}`;
 const isNum = Number.isFinite;
 const round3 = (v) => Math.round(v * 1000) / 1000;
 const cleanText = (s) => String(s).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MAX_CHAT);
@@ -54,12 +67,15 @@ class Bucket {
 }
 
 export class GameServer {
-  constructor({ dir, meta, edits, signs, players, config, log }) {
+  constructor({ dir, meta, edits, signs, players, bans, config, log }) {
     this.dir = dir;
     this.config = config; // { name, motd, maxPlayers }
     this.meta = meta; // { name, seed, spawn, time, dayCycle, created }
     this.newWorld(meta.seed, edits, signs);
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
+    // Bans by name and by browser (hash of the browser's random ID); `seen` remembers which
+    // browsers each name used, so a ban can follow the player. Kept across world resets.
+    this.bans = { names: {}, browsers: {}, seen: {}, ...bans };
     this.clients = new Set();
     this.byId = new Map(); // joined players
     // Temporary operators: lower-case name -> { keyHash, until }. A grant survives a disconnect
@@ -238,11 +254,19 @@ export class GameServer {
     }
     const name = typeof m.name === 'string' ? m.name.trim() : '';
     if (!NAME_RE.test(name)) return this.kick(c, `Invalid name. ${NAME_RULES}`);
+    if (typeof m.bid !== 'string' || !BID_RE.test(m.bid)) return this.kick(c, 'Your game is out of date: reload the page');
+    c.browser = sha256(m.bid).toString('hex').slice(0, 32);
+    const ban = this.banFor(name, c.browser);
+    if (ban) {
+      this.log(`${name} was refused: banned (${c.ip})`);
+      return this.kick(c, banMessage(ban));
+    }
     if (this.byId.size >= this.config.maxPlayers) return this.kick(c, `The server is full (${this.config.maxPlayers} players)`);
     for (const o of this.byId.values()) if (o.name.toLowerCase() === name.toLowerCase()) return this.kick(c, `${o.name} is already playing on this server`);
 
     c.id = this.nextId++;
     c.name = name;
+    this.noteBrowser(name, c.browser);
     const saved = this.saved[name.toLowerCase()] || null;
     if (saved) {
       c.pos = [...saved.pos];
@@ -572,8 +596,83 @@ export class GameServer {
       case 'save':
         this.save().then(() => reply('World saved'));
         return true;
+      case 'ban': {
+        const name = args[0];
+        if (!name || !NAME_RE.test(name)) return reply('Usage: /ban <name> [30m|2h|7d] [reason]'), true;
+        if (c && name.toLowerCase() === c.name.toLowerCase()) return reply("You can't ban yourself"), true;
+        const ms = parseDuration(args[1]);
+        const reason = args.slice(ms ? 2 : 1).join(' ').slice(0, 100);
+        const known = this.ban(name, ms, reason, by);
+        if (!known && !this.findOnline(name)) reply(`Note: ${name} hasn't been seen here, so only the name is banned`);
+        return true;
+      }
+      case 'unban':
+        if (!args[0]) return reply('Usage: /unban <name>'), true;
+        reply(this.unban(args[0]) ? `${args[0]} is no longer banned` : `${args[0]} is not banned`);
+        if (c) this.log(`${by} unbanned ${args[0]}`);
+        return true;
+      case 'banlist': {
+        this.banFor('', '');
+        const list = Object.values(this.bans.names);
+        const uniq = [...new Map(list.map((e) => [e.name.toLowerCase(), e])).values()];
+        reply(uniq.length ? `Banned: ${uniq.map((e) => `${e.name} (${e.until ? `${formatSpan(e.until - Date.now())} left` : 'permanent'})`).join(', ')}` : 'Nobody is banned');
+        return true;
+      }
     }
     return false;
+  }
+
+  // ------------------------------------------------------------ bans
+
+  noteBrowser(name, hash) {
+    const key = name.toLowerCase();
+    const list = (this.bans.seen[key] || []).filter((h) => h !== hash);
+    list.unshift(hash);
+    this.bans.seen[key] = list.slice(0, 8);
+  }
+
+  // The ban that applies to this name or browser, if any. A banned browser under a new name
+  // bans that name too, so changing names doesn't help.
+  banFor(name, hash) {
+    const now = Date.now();
+    const live = (e) => e && (e.until === null || e.until > now);
+    for (const table of [this.bans.names, this.bans.browsers])
+      for (const [k, e] of Object.entries(table)) if (!live(e)) delete table[k];
+    const key = name.toLowerCase();
+    const ban = this.bans.names[key] || this.bans.browsers[hash];
+    if (ban && !this.bans.names[key]) this.bans.names[key] = { ...ban };
+    if (ban && !this.bans.browsers[hash]) this.bans.browsers[hash] = { ...ban };
+    return ban || null;
+  }
+
+  ban(name, ms, reason, by) {
+    const key = name.toLowerCase();
+    const online = this.findOnline(name);
+    const entry = { name: online?.name || this.saved[key]?.name || name, by, reason, until: ms ? Date.now() + ms : null, at: Date.now() };
+    this.bans.names[key] = entry;
+    const browsers = new Set(this.bans.seen[key] || []);
+    if (online?.browser) browsers.add(online.browser);
+    for (const h of browsers) this.bans.browsers[h] = entry;
+    if (online) {
+      this.revokeOp(online.name, by);
+      this.kick(online, banMessage(entry));
+    }
+    this.announce(`${by} banned ${entry.name}${ms ? ` for ${formatSpan(ms)}` : ''}${reason ? `: ${reason}` : ''}`);
+    this.save();
+    return browsers.size;
+  }
+
+  unban(name) {
+    const key = name.toLowerCase();
+    let n = 0;
+    for (const table of [this.bans.names, this.bans.browsers])
+      for (const [k, e] of Object.entries(table))
+        if (k === key || e.name.toLowerCase() === key) {
+          delete table[k];
+          n++;
+        }
+    if (n) this.save();
+    return n > 0;
   }
 
   announce(text) {
@@ -683,7 +782,7 @@ export class GameServer {
   save() {
     if (!this.saving) {
       for (const c of this.byId.values()) this.remember(c);
-      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, signs: this.world.signs, players: this.saved })
+      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, signs: this.world.signs, players: this.saved, bans: this.bans })
         .catch((err) => this.log(`Saving failed: ${err.message}`))
         .finally(() => (this.saving = null));
     }

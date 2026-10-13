@@ -38,7 +38,8 @@ Usage: node server/index.js [options]
   -h, --help          show this help
 
 Console commands: help, list, say <message>, kick <name> [reason], time set <time>,
-daycycle <on|off>, op <name>, deop <name>, reset, cert, save, stop`;
+daycycle <on|off>, op <name>, deop <name>, ban <name> [30m|2h|7d] [reason],
+unban <name>, banlist, reset, cert, save, stop`;
 
 const OPTIONS = {
     port: { type: 'string' },
@@ -109,6 +110,7 @@ if (!loaded) {
     meta: { name: basename(dir), seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null },
     edits: new Map(),
     players: {},
+    bans: {},
   };
   log(`Creating a new world in ${dir} (seed ${seed})`);
 } else {
@@ -277,7 +279,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     case '':
       return;
     case 'help':
-      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, op <name>, deop <name>, reset, cert, save, stop');
+      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, op <name>, deop <name>, ban <name> [30m|2h|7d] [reason], unban <name>, banlist, reset, cert, save, stop');
     case 'say':
       return args.length && game.announce(`[Server] ${args.join(' ')}`);
     case 'kick': {
