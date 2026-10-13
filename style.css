@@ -212,6 +212,9 @@ body.touch-mode #hud.chatting #chat-log {
   bottom: calc(var(--slot) + 36px);
   pointer-events: auto;
 }
+#chat-quick[hidden] {
+  display: none;
+}
 #chat-quick {
   display: flex;
   flex-wrap: wrap;
@@ -219,10 +222,6 @@ body.touch-mode #hud.chatting #chat-log {
   gap: 4px;
   margin-bottom: 4px;
   font-size: 13px;
-}
-#chat-quick span {
-  padding: 0 4px;
-  color: #ddd;
 }
 #chat-quick button,
 #chat-send,

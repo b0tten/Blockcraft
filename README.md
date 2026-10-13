@@ -125,7 +125,7 @@ Current limits:
 | F1 / F3 | Hide HUD / debug overlay |
 | Esc | Pause |
 
-On phones and tablets: use the left-side joystick to move, drag anywhere to look, tap to place, press and hold to break, ↑ to jump (double-tap to fly), ↓ to sneak or fly down, and tap hotbar slots to select them. The speech-bubble button opens chat, which has quick buttons for setting the time (they also work with a keyboard).
+On phones and tablets: use the left-side joystick to move, drag anywhere to look, tap to place, press and hold to break, ↑ to jump (double-tap to fly), ↓ to sneak or fly down, and tap hotbar slots to select them. The speech-bubble button opens chat. Its quick buttons type a command such as `/time` and then offer its options (they also appear when you type the command yourself).
 
 ## How it works
 
