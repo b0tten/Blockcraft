@@ -140,11 +140,12 @@ export class RemotePlayers {
     }
   }
 
-  // Would a block at (x, y, z) overlap another player?
-  intersectsBlock(x, y, z) {
+  // Would collision boxes placed at block (x, y, z) overlap another player?
+  intersectsBoxes(boxes, x, y, z) {
     for (const e of this.map.values()) {
       if (!e.visible) continue;
-      if (e.x + HALF_W > x && e.x - HALF_W < x + 1 && e.y + HEIGHT > y && e.y < y + 1 && e.z + HALF_W > z && e.z - HALF_W < z + 1) return true;
+      for (const b of boxes)
+        if (e.x + HALF_W > x + b[0] && e.x - HALF_W < x + b[3] && e.y + HEIGHT > y + b[1] && e.y < y + b[4] && e.z + HALF_W > z + b[2] && e.z - HALF_W < z + b[5]) return true;
     }
     return false;
   }

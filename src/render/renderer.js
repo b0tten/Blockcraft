@@ -363,6 +363,13 @@ export class Renderer {
 
     // Entities and particles.
     if (this.worldSprites.count) this.drawSprites(this.worldSprites, this.viewProj, fogCol, fogRange);
+    // Sign text, from its own texture array.
+    if (frame.signs?.batch.count) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, frame.signs.tex);
+      this.drawSprites(frame.signs.batch, this.viewProj, fogCol, fogRange);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.blockTex);
+    }
 
     // Clouds
     if (frame.clouds && !frame.underwater) {

@@ -1,11 +1,12 @@
 // World persistence: a folder of JSON files, written atomically (temp file + rename).
 //   world.json    name, seed, spawn, time of day
 //   edits.json    every changed block: { "cx,cz": [index, id, ...] }
+//   signs.json    sign text: { "cx,cz": [[index, [four lines]], ...] }
 //   players.json  last position of each player name
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { serializeEdits, deserializeEdits } from '../src/world/edits.js';
+import { serializeEdits, deserializeEdits, serializeSigns, deserializeSigns } from '../src/world/edits.js';
 
 async function readJSON(file) {
   try {
@@ -28,13 +29,15 @@ export async function loadWorld(dir) {
   return {
     meta,
     edits: deserializeEdits(await readJSON(join(dir, 'edits.json'))),
+    signs: deserializeSigns(await readJSON(join(dir, 'signs.json'))),
     players: (await readJSON(join(dir, 'players.json'))) || {},
   };
 }
 
-export async function saveWorld(dir, { meta, edits, players }) {
+export async function saveWorld(dir, { meta, edits, signs, players }) {
   await mkdir(dir, { recursive: true });
   await writeJSON(join(dir, 'edits.json'), serializeEdits(edits));
+  await writeJSON(join(dir, 'signs.json'), serializeSigns(signs));
   await writeJSON(join(dir, 'players.json'), players);
   await writeJSON(join(dir, 'world.json'), meta);
 }

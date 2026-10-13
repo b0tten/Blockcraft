@@ -2,21 +2,24 @@
 // lighting and meshing run on the main thread under a per-frame time budget.
 
 import { WORLD_HEIGHT as H, SEA_LEVEL, chunkKey } from '../constants.js';
-import { B, SOLID, LIQUID, NEEDS_SUPPORT } from '../blocks.js';
+import { B, SOLID, LIQUID, NEEDS_SUPPORT, COLLIDE, FULL_BOX } from '../blocks.js';
 import { Chunk } from './chunk.js';
 import { LightEngine } from './lighting.js';
 import { buildChunkMesh } from './mesher.js';
 import { TerrainGenerator, BIOME } from './generator.js';
-import { chunkCoords, editsFromArray, serializeEdits, deserializeEdits } from './edits.js';
+import { chunkCoords, editsFromArray, serializeEdits, deserializeEdits, signsFromArray, setSignIn, getSignIn } from './edits.js';
+import { linkedRemoval, isSign } from './rules.js';
 
 export class World {
   // `remote` ({ request(cx, cz), drop(cx, cz) }) switches to multiplayer: a chunk's edits
   // come from the server, and a generated chunk waits until they have arrived.
-  constructor(seed, { edits, onMeshed, onUnloaded, remote } = {}) {
+  constructor(seed, { edits, signs, onMeshed, onUnloaded, remote } = {}) {
     this.seed = seed | 0;
     this.chunks = new Map();
     this.edits = edits || new Map(); // chunkKey -> Map(index -> block id)
     this.editsDirty = false;
+    this.signs = signs || new Map(); // chunkKey -> Map(index -> [four lines])
+    this.signsVersion = 0;
     this.remote = remote || null;
     this.subscribed = new Set(); // chunk keys whose edits we asked the server for
     this.editsReady = new Set(); // ... and whose edits have arrived
@@ -106,6 +109,25 @@ export class World {
     return SOLID[c.blocks[(x & 15) | ((z & 15) << 4) | (y << 8)]] === 1;
   }
 
+  // Collision boxes (block units) of the voxel, or null. Unloaded chunks are solid.
+  boxesAt(x, y, z) {
+    if (y < 0) return FULL_BOX;
+    if (y >= H) return null;
+    const c = this.chunks.get(chunkKey(x >> 4, z >> 4));
+    if (!c || !c.ready) return FULL_BOX;
+    const b = c.blocks[(x & 15) | ((z & 15) << 4) | (y << 8)];
+    return SOLID[b] ? FULL_BOX : COLLIDE[b] || null;
+  }
+
+  getSign(x, y, z) {
+    return getSignIn(this.signs, x, y, z);
+  }
+
+  setSign(x, y, z, lines) {
+    setSignIn(this.signs, x, y, z, lines);
+    this.signsVersion++;
+  }
+
   getLight(x, y, z) {
     if (y >= H) return 0xf0;
     if (y < 0) return 0;
@@ -127,13 +149,15 @@ export class World {
 
   setBlocks(list) {
     const changes = [];
-    for (const [x, y, z, id] of list) {
+    const queue = [...list];
+    for (let q = 0; q < queue.length; q++) {
+      const [x, y, z, id] = queue[q];
       if (y < 0 || y >= H) continue;
       const c = this.chunks.get(chunkKey(x >> 4, z >> 4));
       if (!c || !c.ready) continue;
       const i = (x & 15) | ((z & 15) << 4) | (y << 8);
       if (c.blocks[i] === id) continue;
-      this.writeBlock(c, x, y, z, i, id, changes);
+      this.writeBlock(c, x, y, z, i, id, changes, queue);
       // Plants, torches etc. above lose their support.
       let below = id;
       for (let yy = y + 1; yy < H; yy++) {
@@ -141,7 +165,7 @@ export class World {
         const a = c.blocks[ii];
         if (!NEEDS_SUPPORT[a]) break;
         if (SOLID[below] || (below === a && a === B.sugar_cane)) break;
-        this.writeBlock(c, x, yy, z, ii, 0, changes);
+        this.writeBlock(c, x, yy, z, ii, 0, changes, queue);
         below = 0;
       }
     }
@@ -149,8 +173,13 @@ export class World {
     return changes.length / 3;
   }
 
-  writeBlock(c, x, y, z, i, id, changes) {
+  writeBlock(c, x, y, z, i, id, changes, queue) {
+    const old = c.blocks[i];
     c.blocks[i] = id;
+    if (isSign(old) && !isSign(id) && this.getSign(x, y, z)) this.setSign(x, y, z, null);
+    // The other half of a door or bed goes with this one.
+    const linked = linkedRemoval(this, old, id, x, y, z);
+    if (linked) queue.push(linked);
     if (id !== 0 && y > c.maxY) c.maxY = y;
     let m = this.edits.get(c.key);
     if (!m) this.edits.set(c.key, (m = new Map()));
@@ -336,17 +365,20 @@ export class World {
     this.held.delete(key);
     this.editsReady.delete(key);
     this.edits.delete(key);
+    this.signs.delete(key);
     if (this.subscribed.delete(key)) {
       const [cx, cz] = chunkCoords(key);
       this.remote.drop(cx, cz);
     }
   }
 
-  // The server's full edit list for a chunk we subscribed to.
-  receiveEdits(cx, cz, arr) {
+  // The server's full edit list (and sign text) for a chunk we subscribed to.
+  receiveEdits(cx, cz, arr, signs) {
     const key = chunkKey(cx, cz);
     if (!this.subscribed.has(key)) return;
     const m = editsFromArray(arr);
+    this.signs.set(key, signsFromArray(signs));
+    this.signsVersion++;
     this.editsReady.add(key);
     const c = this.chunks.get(key);
     if (c) {

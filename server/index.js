@@ -158,7 +158,8 @@ async function handle(req, res) {
   if (!path || !(await stat(path).catch(() => null))?.isFile()) {
     return res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
   }
-  const body = await readFile(path);
+  let body = await readFile(path);
+  if (path.endsWith('index.html')) body = Buffer.from(body.toString('utf8').replace('<head>', '<head>\n    <meta name="blockcraft-server" content="1" />'));
   res.writeHead(200, { 'Content-Type': TYPES[extname(path)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
   res.end(req.method === 'HEAD' ? undefined : body);
 }

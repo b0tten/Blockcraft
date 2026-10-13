@@ -1,6 +1,6 @@
 // First-person held block, built in view space.
 
-import { FACE_TEX, RENDER, R_CROSS, R_TORCH } from './blocks.js';
+import { FACE_TEX, RENDER, R_CROSS, R_TORCH, R_ITEM } from './blocks.js';
 import { modelMatrix } from './math.js';
 
 const m = new Float32Array(16);
@@ -18,7 +18,7 @@ export function buildHand(batch, id, s) {
   y -= Math.abs(Math.cos(s.bobPhase * Math.PI)) * 0.035 * s.bobAmount;
 
   const r = RENDER[id];
-  if (r === R_CROSS || r === R_TORCH) {
+  if (r === R_CROSS || r === R_TORCH || r === R_ITEM) {
     // Flat sprite, tilted like an item.
     const size = 0.5;
     modelMatrix(m, x, y, z, -0.35 - swingB * 0.4, 0, 0.25, size);

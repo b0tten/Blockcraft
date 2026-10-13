@@ -19,7 +19,10 @@ import { raycast, blockBounds } from './raycast.js';
 import { environment, lightBrightness, timeLabel } from './sky.js';
 import { buildTextureArray } from './textures.js';
 import { makeIcons, textureDataURL } from './icons.js';
-import { B, BLOCKS, SOLID, LIQUID, REPLACEABLE, NEEDS_SUPPORT, allTextureNames, resolveTextures } from './blocks.js';
+import { B, BLOCKS, SOLID, LIQUID, REPLACEABLE, COLLIDE, FULL_BOX, BLOCK_ITEM, allTextureNames, resolveTextures } from './blocks.js';
+import { placeChanges, useChanges, facingFromYaw, isSign, cleanSignLines } from './world/rules.js';
+import { serializeSigns, deserializeSigns } from './world/edits.js';
+import { SignText } from './render/signs.js';
 import { forwardVector, clamp } from './math.js';
 import { DAY_LENGTH_SECONDS, WORLD_HEIGHT } from './constants.js';
 import * as store from './storage.js';
@@ -29,6 +32,8 @@ const REACH = 6;
 const AUTOSAVE_SECONDS = 30;
 const PANORAMA_SEED = 1337;
 const NO_INPUT = { forward: false, back: false, left: false, right: false, jump: false, sneak: false, sprint: false };
+// Clicked face from a hit normal: 0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z.
+const FACE_OF = { '1,0,0': 0, '-1,0,0': 1, '0,1,0': 2, '0,-1,0': 3, '0,0,1': 4, '0,0,-1': 5 };
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
 
@@ -60,6 +65,7 @@ class Game {
     resolveTextures((name) => tex.layers.get(name));
     this.texLayers = tex.layers;
     this.renderer.setTextures(tex);
+    this.signText = new SignText(this.renderer.gl);
     this.icons = makeIcons(tex);
     this.ui.setBackground(textureDataURL(tex, 'dirt'));
     this.ui.setInventoryIcons();
@@ -176,6 +182,7 @@ class Game {
     const renderer = this.renderer;
     this.world = new World(meta.seed, {
       edits: World.deserializeEdits(data?.edits),
+      signs: deserializeSigns(data?.signs),
       onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
       onUnloaded: (c) => renderer.deleteChunk(c),
     });
@@ -332,8 +339,13 @@ class Game {
         w.applyRemoteBlocks(m.b);
         break;
       case 'chunk':
-        w.receiveEdits(m.cx, m.cz, m.e);
+        w.receiveEdits(m.cx, m.cz, m.e, m.s);
         break;
+      case 'sign': {
+        const lines = cleanSignLines(m.l);
+        if (lines && [m.x, m.y, m.z].every(Number.isInteger)) w.setSign(m.x, m.y, m.z, lines);
+        break;
+      }
       case 'players':
         this.remote.setStates(m.s);
         break;
@@ -433,6 +445,7 @@ class Game {
       hotbar: this.hotbar,
       selected: this.selected,
       edits: this.world.serializeEdits(),
+      signs: serializeSigns(this.world.signs),
     });
     if (!ok) this.ui.toast('Could not save: browser storage is full');
     this.meta.lastPlayed = Date.now();
@@ -453,6 +466,7 @@ class Game {
     this.state = 'title';
     this.ui.closeInventory();
     this.ui.closeChat();
+    this.ui.closeSignEditor();
     this.ui.showHud(false);
     this.startPanorama();
   }
@@ -767,52 +781,88 @@ class Game {
     const t = this.target;
     if (!t) return;
     const w = this.world, p = this.player;
-    if (t.block === B.tnt && !p.sneaking) {
-      w.setBlock(t.x, t.y, t.z, 0);
-      if (this.net) {
-        this.net.send({ t: 'ignite', x: t.x, y: t.y, z: t.z });
-        this.net.send({ t: 'swing' });
-      } else {
-        this.entities.push(new PrimedTNT(t.x, t.y, t.z, 4));
-        this.sound.fuse();
+    const held = this.hotbar[this.selected];
+    if (!p.sneaking) {
+      // Using a block (sneak to place against it instead).
+      if (isSign(t.block)) {
+        this.swing = 0;
+        return this.editSign(t.x, t.y, t.z);
       }
-      this.swing = 0;
-      w.flushNear(t.x, t.z);
-      return;
+      const used = useChanges(w, t.x, t.y, t.z, held);
+      if (used) {
+        w.setBlocks(used);
+        this.net?.send({ t: 'use', x: t.x, y: t.y, z: t.z, id: held });
+        this.net?.send({ t: 'swing' });
+        this.sound.blockPlace(BLOCKS[used[0][3]].sound);
+        this.swing = 0;
+        w.flushNear(t.x, t.z);
+        return;
+      }
+      if (t.block === B.tnt) {
+        w.setBlock(t.x, t.y, t.z, 0);
+        if (this.net) {
+          this.net.send({ t: 'ignite', x: t.x, y: t.y, z: t.z });
+          this.net.send({ t: 'swing' });
+        } else {
+          this.entities.push(new PrimedTNT(t.x, t.y, t.z, 4));
+          this.sound.fuse();
+        }
+        this.swing = 0;
+        w.flushNear(t.x, t.z);
+        return;
+      }
     }
-    const id = this.hotbar[this.selected];
-    if (!id) return;
+    if (!held) return;
     let x = t.x + t.nx, y = t.y + t.ny, z = t.z + t.nz;
-    if (REPLACEABLE[t.block] && !LIQUID[t.block] && t.block !== id) {
+    let face = FACE_OF[`${t.nx},${t.ny},${t.nz}`] ?? 2;
+    if (REPLACEABLE[t.block] && !LIQUID[t.block] && t.block !== held) {
       x = t.x;
       y = t.y;
       z = t.z;
+      face = 2;
     }
-    if (y < 0 || y >= WORLD_HEIGHT) return;
-    const cur = w.getBlock(x, y, z);
-    if (cur !== 0 && !REPLACEABLE[cur]) return;
-    if (SOLID[id] && (p.intersectsBlock(x, y, z) || this.remote?.intersectsBlock(x, y, z))) return;
-    if (NEEDS_SUPPORT[id]) {
-      const below = w.getBlock(x, y - 1, z);
-      const supported = SOLID[below] || (id === B.sugar_cane && below === B.sugar_cane);
-      if (!supported && !(id === B.torch && t.ny === 0)) return;
+    const rot = facingFromYaw(p.yaw);
+    const changes = placeChanges(w, x, y, z, held, rot, face);
+    if (!changes) return;
+    for (const [cx, cy, cz, id] of changes) {
+      const boxes = SOLID[id] ? FULL_BOX : COLLIDE[id];
+      if (boxes && (p.intersectsBoxes(boxes, cx, cy, cz) || this.remote?.intersectsBoxes(boxes, cx, cy, cz))) return;
     }
-    w.setBlock(x, y, z, id);
+    w.setBlocks(changes);
     if (this.net) {
-      this.net.send({ t: 'set', x, y, z, id });
+      this.net.send({ t: 'set', x, y, z, id: held, r: rot, f: face });
       this.net.send({ t: 'swing' });
     }
-    this.sound.blockPlace(BLOCKS[id].sound);
+    this.sound.blockPlace(BLOCKS[held].sound);
     this.swing = 0;
-    w.flushNear(x, z);
+    for (const [cx, , cz] of changes) w.flushNear(cx, cz);
+    if (isSign(changes[0][3])) this.editSign(x, y, z);
+  }
+
+  // Sign text editor; the new text is shown at once and sent to the server.
+  editSign(x, y, z) {
+    this.state = 'sign';
+    this.touch.show(false);
+    this.input.exitLock();
+    this.ui.openSignEditor(this.world.getSign(x, y, z) || ['', '', '', ''], (lines) => {
+      const w = this.world;
+      if (w && isSign(w.getBlock(x, y, z))) {
+        const clean = cleanSignLines(lines);
+        w.setSign(x, y, z, clean);
+        this.net?.send({ t: 'sign', x, y, z, l: clean });
+      }
+      this.resume();
+    });
   }
 
   pickBlock() {
     const t = this.target;
-    if (!t || !BLOCKS[t.block].inventory) return;
-    const i = this.hotbar.indexOf(t.block);
+    if (!t) return;
+    const item = BLOCK_ITEM[t.block];
+    if (!BLOCKS[item].inventory) return;
+    const i = this.hotbar.indexOf(item);
     if (i >= 0) this.selectSlot(i);
-    else this.setHotbarSlot(this.selected, t.block);
+    else this.setHotbarSlot(this.selected, item);
   }
 
   playerSounds(events) {
@@ -854,6 +904,7 @@ class Game {
     for (const e of this.entities) e.draw(ws, cam, w, env.sunlight);
     this.remote?.draw(ws, cam, w, env.sunlight, (w.renderDistance + 1) * 16);
     this.particles.build(ws, cam, w, env.sunlight);
+    this.signText.build(w, cam, env.sunlight);
 
     const hs = this.renderer.handSprites;
     hs.clear();
@@ -885,6 +936,7 @@ class Game {
       underwater: p.headInWater,
       inLava: p.headInLava,
       clouds: s.clouds,
+      signs: this.signText,
     });
     this.remote?.updateTags(this.renderer.viewProj, cam, this.canvas.clientWidth, this.canvas.clientHeight);
   }

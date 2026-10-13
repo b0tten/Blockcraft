@@ -5,15 +5,18 @@
 import { TerrainGenerator, BIOME } from '../src/world/generator.js';
 import { WORLD_HEIGHT as H, SEA_LEVEL, chunkKey } from '../src/constants.js';
 import { B, SOLID, LIQUID, NEEDS_SUPPORT } from '../src/blocks.js';
+import { linkedRemoval, isSign } from '../src/world/rules.js';
+import { setSignIn, getSignIn } from '../src/world/edits.js';
 
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
 
 export class ServerWorld {
-  constructor(seed, edits = new Map()) {
+  constructor(seed, edits = new Map(), signs = new Map()) {
     this.seed = seed | 0;
     this.generator = new TerrainGenerator(this.seed);
     this.edits = edits; // chunkKey -> Map(index -> id): the persistent part of the world
+    this.signs = signs; // chunkKey -> Map(index -> [four lines])
     this.chunks = new Map(); // chunkKey -> { blocks, used }: a cache, rebuilt when needed
     this.changes = []; // x, y, z, id of every write since the last takeChanges()
     this.allow = () => true; // (x, z) -> may blocks there change? (the world border)
@@ -54,12 +57,14 @@ export class ServerWorld {
   // their support, so both sides end up with identical blocks.
   setBlocks(list) {
     let n = 0;
-    for (const [x, y, z, id] of list) {
+    const queue = [...list];
+    for (let q = 0; q < queue.length; q++) {
+      const [x, y, z, id] = queue[q];
       if (y < 0 || y >= H || !this.allow(x, z)) continue;
       const c = this.chunk(x >> 4, z >> 4);
       const i = (x & 15) | ((z & 15) << 4) | (y << 8);
       if (c.blocks[i] === id) continue;
-      this.write(c, x, y, z, i, id);
+      this.write(c, x, y, z, i, id, queue);
       n++;
       let below = id;
       for (let yy = y + 1; yy < H; yy++) {
@@ -67,7 +72,7 @@ export class ServerWorld {
         const a = c.blocks[ii];
         if (!NEEDS_SUPPORT[a]) break;
         if (SOLID[below] || (below === a && a === B.sugar_cane)) break;
-        this.write(c, x, yy, z, ii, 0);
+        this.write(c, x, yy, z, ii, 0, queue);
         n++;
         below = 0;
       }
@@ -75,12 +80,25 @@ export class ServerWorld {
     return n;
   }
 
-  write(c, x, y, z, i, id) {
+  write(c, x, y, z, i, id, queue) {
+    const old = c.blocks[i];
     c.blocks[i] = id;
+    if (isSign(old) && !isSign(id)) setSignIn(this.signs, x, y, z, null);
+    const linked = linkedRemoval(this, old, id, x, y, z);
+    if (linked) queue.push(linked);
     let m = this.edits.get(c.key);
     if (!m) this.edits.set(c.key, (m = new Map()));
     m.set(i, id);
     this.changes.push(x, y, z, id);
+    this.dirty = true;
+  }
+
+  getSign(x, y, z) {
+    return getSignIn(this.signs, x, y, z);
+  }
+
+  setSign(x, y, z, lines) {
+    setSignIn(this.signs, x, y, z, lines);
     this.dirty = true;
   }
 

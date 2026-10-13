@@ -49,6 +49,17 @@
       <div id="tooltip" hidden></div>
     </div>
 
+    <div id="sign-editor" class="overlay" hidden>
+      <form class="sign-board" autocomplete="off">
+        <input class="sign-line" maxlength="15" spellcheck="false" aria-label="Sign line 1" />
+        <input class="sign-line" maxlength="15" spellcheck="false" aria-label="Sign line 2" />
+        <input class="sign-line" maxlength="15" spellcheck="false" aria-label="Sign line 3" />
+        <input class="sign-line" maxlength="15" spellcheck="false" aria-label="Sign line 4" />
+        <button type="submit">Done</button>
+      </form>
+      <p class="hint">Enter moves to the next line · Esc or Done to finish</p>
+    </div>
+
     <div id="screens">
       <section id="screen-title" class="screen pano">
         <div class="logo-wrap">
@@ -156,7 +167,8 @@
           <tr><td>Shift</td><td>Sneak · fly down</td></tr>
           <tr><td>Ctrl / R / W×2</td><td>Sprint</td></tr>
           <tr><td>Left click</td><td>Break block</td></tr>
-          <tr><td>Right click</td><td>Place block · light TNT</td></tr>
+          <tr><td>Right click</td><td>Place · open doors · fill pots · edit signs · light TNT</td></tr>
+          <tr><td>Shift + right click</td><td>Place against a door, pot or sign</td></tr>
           <tr><td>Middle click</td><td>Pick block</td></tr>
           <tr><td>1–9 / wheel</td><td>Select hotbar slot</td></tr>
           <tr><td>E</td><td>Block inventory</td></tr>

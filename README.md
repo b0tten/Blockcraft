@@ -90,6 +90,7 @@ Current limits:
 - **Caves**, lava pools, and coal, iron, gold and diamond ores
 - **Trees** (oak, birch, spruce), cacti, sugar cane, flowers, grass and mushrooms
 - **80 block types**, including glass, TNT, glowstone, torches, bookshelves, 16 wool colours and ore blocks
+- **Decorations**: doors that open and close, climbable ladders, beds, signs you can write on, and flower pots for flowers, mushrooms and ferns
 - **Lighting**: flood-fill sky light and block light (torches, glowstone, lava), smooth lighting and ambient occlusion
 - **Day/night cycle** with sunsets, stars, a square sun and moon, and drifting clouds
 - **Water and lava** that flow into holes you dig, swimming, and an underwater fog
@@ -115,7 +116,8 @@ Current limits:
 | Shift | Sneak / fly down |
 | Ctrl, R, or double-tap W | Sprint |
 | Left click | Break block |
-| Right click | Place block (right click TNT to light it) |
+| Right click | Place block · open doors · fill pots · edit signs · light TNT |
+| Shift + right click | Place against a door, pot or sign instead of using it |
 | Middle click | Pick block |
 | 1–9, mouse wheel | Select hotbar slot |
 | E | Inventory |
@@ -163,11 +165,13 @@ src/
     generator.js           terrain, biomes, caves, ores, trees (pure, runs in workers)
     worker.js              terrain generation worker
     world.js               chunk streaming, block edits, save format
-    edits.js               edit maps and their compact JSON form
+    edits.js               edit maps, sign text and their compact JSON form
+    rules.js               placing and using blocks (doors, beds, pots...), shared with the server
     lighting.js            incremental BFS light propagation and removal
     mesher.js              face culling, AO and smooth light into packed vertices
   render/
     renderer.js            WebGL2 pipeline: chunks, sky, clouds, outline, sprites
+    signs.js               sign text drawn into a texture array
     shaders.js             GLSL ES 3.0 shaders
 ```
 
@@ -177,5 +181,6 @@ src/
 - Each vertex packs into 16 bytes (position, texture layer, UV, face, AO, sky and block light). All quads share one index buffer, and textures live in a `TEXTURE_2D_ARRAY` so mipmaps don't bleed.
 - Rendering is camera-relative, so precision holds far from the origin. Chunks are frustum-culled and drawn front-to-back; water is drawn back-to-front afterwards.
 - Saves store only the blocks you changed, keyed by chunk, and replay them on top of the regenerated terrain.
+- Doors, beds, ladders, signs and pots are box models in 1/16-block units. Each facing, door half and open state is its own block id, so they need no extra per-block data; only sign text is stored separately. Players collide with each block's boxes (you can stand on a bed, and a closed door blocks only its panel).
 - Multiplayer never sends terrain. The browser and the server both generate it from the seed; when a player loads a chunk the server sends that chunk's edits, then streams every later change in order, so all players converge on the server's copy. The server runs the same generator, liquid and TNT code as the browser. Messages are JSON over WebSocket and are listed in `src/net/protocol.js`.
 - Other players' positions are stamped with the sender's clock and replayed 120 ms behind, so their movement stays smooth even when packets arrive unevenly.

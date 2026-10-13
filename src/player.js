@@ -1,6 +1,6 @@
 // First-person player: movement, gravity, swimming, flying and AABB collision against voxels.
 
-import { B } from './blocks.js';
+import { B, CLIMB } from './blocks.js';
 
 const HALF_W = 0.3;
 const HEIGHT = 1.8;
@@ -13,6 +13,8 @@ const SPRINT = 5.612;
 const SNEAK = 1.31;
 const FLY = 10.9;
 const FLY_SPRINT = 21.8;
+const CLIMB_SPEED = 2.4;
+const LADDER_FALL = 3;
 
 export class Player {
   constructor() {
@@ -32,6 +34,8 @@ export class Player {
     this.bobAmount = 0;
     this.stepAccum = 0;
     this.fallSpeed = 0;
+    this.onLadder = false;
+    this.hitWall = false;
   }
 
   get eye() {
@@ -71,6 +75,7 @@ export class Player {
 
     const wasInWater = this.inWater;
     this.checkLiquids(world);
+    this.onLadder = !this.flying && this.touchingLadder(world);
     if (this.inWater && !wasInWater && v[1] < -4) events.push('splash');
 
     if (this.flying) {
@@ -97,9 +102,15 @@ export class Player {
       v[2] += (wz * speed - v[2]) * k;
       v[1] -= GRAVITY * dt;
       if (v[1] < -60) v[1] = -60;
-      if (input.jump && this.onGround) {
+      if (input.jump && this.onGround && !this.onLadder) {
         v[1] = JUMP_VELOCITY;
         events.push('jump');
+      }
+      if (this.onLadder) {
+        // Climb by pushing into the ladder or holding jump; sneaking holds on.
+        if (input.jump || (this.hitWall && (input.forward || input.az < -0.25))) v[1] = CLIMB_SPEED;
+        else if (input.sneak) v[1] = Math.max(v[1], 0);
+        v[1] = Math.max(v[1], -LADDER_FALL);
       }
     }
 
@@ -110,6 +121,7 @@ export class Player {
     const steps = Math.max(1, Math.ceil(maxMove / 0.35));
     const sdt = dt / steps;
     this.onGround = false;
+    this.hitWall = false;
     for (let s = 0; s < steps; s++) {
       if (this.moveAxis(world, 1, v[1] * sdt)) {
         if (v[1] < 0) this.onGround = true;
@@ -118,7 +130,10 @@ export class Player {
       const guard = this.sneaking && (wasOnGround || this.onGround);
       for (const axis of [0, 2]) {
         const before = p[axis];
-        if (this.moveAxis(world, axis, v[axis] * sdt)) v[axis] = 0;
+        if (this.moveAxis(world, axis, v[axis] * sdt)) {
+          v[axis] = 0;
+          this.hitWall = true;
+        }
         else if (guard && !this.groundBelow(world)) {
           p[axis] = before;
           v[axis] = 0;
@@ -180,58 +195,60 @@ export class Player {
     return false;
   }
 
+  // Does the box overlap any block's collision box?
   aabbHits(world, minX, minY, minZ, maxX, maxY, maxZ) {
-    const x0 = Math.floor(minX), x1 = Math.floor(maxX - EPS);
-    const y0 = Math.floor(minY), y1 = Math.floor(maxY - EPS);
-    const z0 = Math.floor(minZ), z1 = Math.floor(maxZ - EPS);
-    for (let y = y0; y <= y1; y++)
-      for (let z = z0; z <= z1; z++)
-        for (let x = x0; x <= x1; x++) if (world.isSolid(x, y, z)) return true;
+    for (let y = Math.floor(minY); y <= Math.floor(maxY - EPS); y++)
+      for (let z = Math.floor(minZ); z <= Math.floor(maxZ - EPS); z++)
+        for (let x = Math.floor(minX); x <= Math.floor(maxX - EPS); x++) {
+          const boxes = world.boxesAt(x, y, z);
+          if (!boxes) continue;
+          for (const b of boxes)
+            if (x + b[0] < maxX && x + b[3] > minX && y + b[1] < maxY && y + b[4] > minY && z + b[2] < maxZ && z + b[5] > minZ) return true;
+        }
     return false;
   }
 
-  // Sweep the leading face along one axis and stop at the first solid voxel it enters.
-  // Voxels the player already overlaps are ignored, so you can always move out of a block.
+  // Move along one axis and stop at the first collision box ahead. Boxes the player already
+  // overlaps are ignored, so you can always move out of a block.
   moveAxis(world, axis, amount) {
     if (amount === 0) return false;
     const p = this.pos;
-    const lo = axis === 1 ? 0 : HALF_W;
-    const hi = axis === 1 ? HEIGHT : HALF_W;
-    let first, last, step;
-    if (amount > 0) {
-      const edge = p[axis] + hi;
-      first = Math.ceil(edge);
-      last = Math.floor(edge + amount - EPS);
-      step = 1;
-    } else {
-      const edge = p[axis] - lo;
-      first = Math.floor(edge) - 1;
-      last = Math.floor(edge + amount + EPS);
-      step = -1;
-    }
-    if ((last - first) * step >= 0) {
-      // Cross-section of the box on the other two axes.
-      const a1 = axis === 0 ? 1 : 0, a2 = axis === 2 ? 1 : 2;
-      const lo1 = a1 === 1 ? 0 : HALF_W, hi1 = a1 === 1 ? HEIGHT : HALF_W;
-      const lo2 = a2 === 1 ? 0 : HALF_W, hi2 = a2 === 1 ? HEIGHT : HALF_W;
-      const s1 = Math.floor(p[a1] - lo1 + EPS), e1 = Math.floor(p[a1] + hi1 - EPS);
-      const s2 = Math.floor(p[a2] - lo2 + EPS), e2 = Math.floor(p[a2] + hi2 - EPS);
-      const v = [0, 0, 0];
-      for (let c = first; step > 0 ? c <= last : c >= last; c += step) {
-        v[axis] = c;
-        for (let i = s1; i <= e1; i++) {
-          v[a1] = i;
-          for (let j = s2; j <= e2; j++) {
-            v[a2] = j;
-            if (world.isSolid(v[0], v[1], v[2])) {
-              p[axis] = amount > 0 ? c - hi - EPS : c + 1 + lo + EPS;
-              return true;
+    const min = [p[0] - HALF_W, p[1], p[2] - HALF_W];
+    const max = [p[0] + HALF_W, p[1] + HEIGHT, p[2] + HALF_W];
+    const lo = [...min], hi = [...max];
+    if (amount > 0) hi[axis] += amount;
+    else lo[axis] += amount;
+    const a1 = axis === 0 ? 1 : 0, a2 = axis === 2 ? 1 : 2;
+    let move = amount;
+    const v = [0, 0, 0];
+    for (let y = Math.floor(lo[1]); y <= Math.floor(hi[1]); y++)
+      for (let z = Math.floor(lo[2]); z <= Math.floor(hi[2]); z++)
+        for (let x = Math.floor(lo[0]); x <= Math.floor(hi[0]); x++) {
+          const boxes = world.boxesAt(x, y, z);
+          if (!boxes) continue;
+          v[0] = x;
+          v[1] = y;
+          v[2] = z;
+          for (const b of boxes) {
+            const b1 = v[a1] + b[a1], e1 = v[a1] + b[a1 + 3];
+            const b2 = v[a2] + b[a2], e2 = v[a2] + b[a2 + 3];
+            if (b1 >= max[a1] - EPS || e1 <= min[a1] + EPS || b2 >= max[a2] - EPS || e2 <= min[a2] + EPS) continue;
+            if (amount > 0) {
+              const face = v[axis] + b[axis];
+              if (face >= max[axis] - EPS) move = Math.min(move, Math.max(0, face - max[axis] - EPS));
+            } else {
+              const face = v[axis] + b[axis + 3];
+              if (face <= min[axis] + EPS) move = Math.max(move, Math.min(0, face - min[axis] + EPS));
             }
           }
         }
-      }
-    }
-    p[axis] += amount;
+    p[axis] += move;
+    return move !== amount;
+  }
+
+  touchingLadder(world) {
+    const p = this.pos;
+    for (const dy of [0.1, 0.9]) if (CLIMB[world.getBlock(Math.floor(p[0]), Math.floor(p[1] + dy), Math.floor(p[2]))]) return true;
     return false;
   }
 
@@ -245,10 +262,10 @@ export class Player {
     return this.aabbHits(world, p[0] - HALF_W, p[1] - 0.02, p[2] - HALF_W, p[0] + HALF_W, p[1], p[2] + HALF_W);
   }
 
-  // Would a block at (x, y, z) overlap the player?
-  intersectsBlock(x, y, z) {
+  // Would collision boxes placed at block (x, y, z) overlap the player?
+  intersectsBoxes(boxes, x, y, z) {
     const p = this.pos;
-    return p[0] + HALF_W > x && p[0] - HALF_W < x + 1 && p[1] + HEIGHT > y && p[1] < y + 1 && p[2] + HALF_W > z && p[2] - HALF_W < z + 1;
+    return boxes.some((b) => p[0] + HALF_W > x + b[0] && p[0] - HALF_W < x + b[3] && p[1] + HEIGHT > y + b[1] && p[1] < y + b[4] && p[2] + HALF_W > z + b[2] && p[2] - HALF_W < z + b[5]);
   }
 
   blockUnderFeet(world) {

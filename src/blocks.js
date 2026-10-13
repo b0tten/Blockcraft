@@ -6,6 +6,8 @@ export const R_CUTOUT = 2; // opaque pass with alpha test (leaves, glass)
 export const R_TRANSLUCENT = 3; // blended pass (water, ice)
 export const R_CROSS = 4; // two crossed quads (flowers, grass)
 export const R_TORCH = 5; // small upright stick
+export const R_MODEL = 6; // box model (doors, beds, signs...), see the decoration blocks below
+export const R_ITEM = 7; // inventory item that places other blocks; never in the world
 
 const WOOLS = [
   ['white', 'White'], ['light_gray', 'Light Gray'], ['gray', 'Gray'], ['black', 'Black'],
@@ -75,6 +77,70 @@ const DEFS = [
   ['sugar_cane', { ...PLANT, name: 'Sugar Cane', tex: 'sugar_cane', wave: false }],
 ];
 
+// ------------------------------------------------------------ decoration blocks
+// Shaped blocks are drawn from box models in 1/16 units, built facing north (rot 0) and
+// turned in quarter turns clockwise (seen from above). Every facing, door half, open state
+// and pot contents is its own block id; players place them through an inventory item
+// (render R_ITEM). world/rules.js decides how they are placed and used.
+
+const PL = 'planks_oak';
+// Face textures in the order +X, -X, +Y, -Y, +Z (south), -Z (north).
+const box = (b, tex) => ({ box: b, tex: typeof tex === 'string' ? Array(6).fill(tex) : tex });
+const DOOR_BOX = [[0, 0, 0, 16, 16, 3]];
+const MODELS = {
+  doorLower: [box(DOOR_BOX[0], [PL, PL, PL, PL, 'door_bottom', 'door_bottom'])],
+  doorUpper: [box(DOOR_BOX[0], [PL, PL, PL, PL, 'door_top', 'door_top'])],
+  ladder: [box([0, 0, 0, 16, 16, 1], 'ladder')],
+  signWall: [box([0, 4, 0, 16, 12, 2], 'sign')],
+  signStand: [box([0, 7, 7, 16, 15, 9], 'sign'), box([7, 0, 7, 9, 7, 9], 'log_oak')],
+  // Head towards north: the head half is north of the foot half.
+  bedFoot: [box([0, 3, 0, 16, 9, 16], ['bed_side', 'bed_side', 'bed_foot_top', PL, 'bed_end', 'bed_side']), box([0, 0, 13, 3, 3, 16], PL), box([13, 0, 13, 16, 3, 16], PL)],
+  bedHead: [box([0, 3, 0, 16, 9, 16], ['bed_side', 'bed_side', 'bed_head_top', PL, 'bed_side', 'bed_end']), box([0, 0, 0, 3, 3, 3], PL), box([13, 0, 0, 16, 3, 3], PL)],
+  pot: [box([5, 0, 5, 11, 6, 11], ['flower_pot', 'flower_pot', 'flower_pot_top', 'flower_pot', 'flower_pot', 'flower_pot'])],
+};
+// Where sign text goes, in the same units: the board's front (+Z in the model) at depth z.
+export const SIGN_TEXT = { wall: { x0: 1, x1: 15, y0: 4.5, y1: 11.5, z: 2.08 }, stand: { x0: 1, x1: 15, y0: 7.5, y1: 14.5, z: 9.08 } };
+const POTTABLE = ['dandelion', 'poppy', 'cornflower', 'red_mushroom', 'brown_mushroom', 'fern', 'dead_bush'];
+const DEFAULTS = { render: R_MODEL, solid: false, opaque: false, inventory: false, sound: 'wood', hardness: 1 };
+const ITEM = { render: R_ITEM, solid: false, opaque: false, sound: 'wood', hardness: 1 };
+
+DEFS.push(
+  ['oak_door', { ...ITEM, name: 'Oak Door', tex: 'door_item' }],
+  ['ladder', { ...ITEM, name: 'Ladder', tex: 'ladder' }],
+  ['red_bed', { ...ITEM, name: 'Red Bed', tex: 'bed_item', sound: 'cloth' }],
+  ['oak_sign', { ...ITEM, name: 'Oak Sign', tex: 'sign_item' }],
+  ['flower_pot', { ...ITEM, name: 'Flower Pot', tex: 'flower_pot_item', sound: 'stone' }],
+);
+for (const open of [false, true])
+  for (const half of ['lower', 'upper'])
+    for (let r = 0; r < 4; r++)
+      DEFS.push([`oak_door_${half}${open ? '_open' : ''}_${r}`, {
+        ...DEFAULTS, name: 'Oak Door', tex: PL, item: 'oak_door', model: half === 'lower' ? MODELS.doorLower : MODELS.doorUpper,
+        // An open door is the closed one swung a quarter turn about its hinge.
+        rot: open ? (r + 3) % 4 : r, collide: DOOR_BOX, support: half === 'lower', variant: { kind: 'door', half, open, rot: r },
+      }]);
+for (let r = 0; r < 4; r++) DEFS.push([`ladder_${r}`, { ...DEFAULTS, name: 'Ladder', tex: 'ladder', item: 'ladder', model: MODELS.ladder, rot: r, climb: true, variant: { kind: 'ladder', rot: r } }]);
+for (const part of ['foot', 'head'])
+  for (let r = 0; r < 4; r++)
+    DEFS.push([`red_bed_${part}_${r}`, {
+      ...DEFAULTS, name: 'Red Bed', tex: 'wool_red', item: 'red_bed', sound: 'cloth', model: part === 'foot' ? MODELS.bedFoot : MODELS.bedHead,
+      rot: r, collide: [[0, 0, 0, 16, 9, 16]], support: true, variant: { kind: 'bed', part, rot: r },
+    }]);
+for (const wall of [true, false])
+  for (let r = 0; r < 4; r++)
+    DEFS.push([`oak_sign_${wall ? 'wall' : 'stand'}_${r}`, {
+      ...DEFAULTS, name: 'Oak Sign', tex: 'sign', item: 'oak_sign', model: wall ? MODELS.signWall : MODELS.signStand,
+      rot: r, support: !wall, variant: { kind: 'sign', wall, rot: r },
+    }]);
+for (const plant of [null, ...POTTABLE]) {
+  const plantDef = plant && DEFS.find(([k]) => k === plant)[1];
+  DEFS.push([plant ? `potted_${plant}` : 'flower_pot_placed', {
+    ...DEFAULTS, name: plant ? `Potted ${plantDef.name}` : 'Flower Pot', tex: 'flower_pot', item: 'flower_pot', sound: 'stone', hardness: 0,
+    model: plant ? [...MODELS.pot, { cross: [2, 4, 2, 14, 20, 14], tex: Array(6).fill(plantDef.tex) }] : MODELS.pot,
+    rot: 0, collide: [[5, 0, 5, 11, 6, 11]], support: true, variant: { kind: 'pot', plant },
+  }]);
+}
+
 export const WOOL_COLORS = WOOLS.map(([id]) => id);
 
 export const BLOCKS = [];
@@ -90,6 +156,14 @@ export const CULL_SELF = new Uint8Array(256);
 export const WAVE = new Uint8Array(256);
 export const REPLACEABLE = new Uint8Array(256);
 export const NEEDS_SUPPORT = new Uint8Array(256);
+export const CLIMB = new Uint8Array(256);
+// Shaped blocks: MODEL[id] = { parts, rot }; COLLIDE[id] / SELECT[id] = boxes in block units.
+export const MODEL = [];
+export const COLLIDE = [];
+export const SELECT = [];
+export const VARIANT = []; // id -> { kind: 'door' | 'ladder' | 'bed' | 'sign' | 'pot', ... }
+export const BLOCK_ITEM = new Uint8Array(256); // what you get when you pick the block
+export const FULL_BOX = [[0, 0, 0, 1, 1, 1]];
 // Texture layer per face (6 per block); filled in by resolveTextures().
 export const FACE_TEX = new Uint16Array(256 * 6);
 
@@ -123,6 +197,45 @@ DEFS.forEach(([key, def], id) => {
   WAVE[id] = def.wave ? 1 : 0;
   REPLACEABLE[id] = def.replaceable ? 1 : 0;
   NEEDS_SUPPORT[id] = def.support ? 1 : 0;
+  CLIMB[id] = def.climb ? 1 : 0;
+  BLOCK_ITEM[id] = id;
+  if (def.model) MODEL[id] = { parts: def.model, rot: def.rot };
+});
+
+// Quarter turns about the block's vertical axis, in 1/16 units: (x, z) -> (16 - z, x).
+export function rotateXZ(x, z, rot) {
+  for (let i = 0; i < rot; i++) [x, z] = [16 - z, x];
+  return [x, z];
+}
+// Face index after a quarter turn: +X -> +Z -> -X -> -Z -> +X.
+const TURN = [4, 5, 2, 3, 1, 0];
+export const ROT_FACE = [[0, 1, 2, 3, 4, 5]];
+for (let r = 1; r < 4; r++) ROT_FACE.push(ROT_FACE[r - 1].map((f) => TURN[f]));
+
+function rotateBox(b, rot) {
+  const [ax, az] = rotateXZ(b[0], b[2], rot), [bx, bz] = rotateXZ(b[3], b[5], rot);
+  return [Math.min(ax, bx) / 16, b[1] / 16, Math.min(az, bz) / 16, Math.max(ax, bx) / 16, b[4] / 16, Math.max(az, bz) / 16];
+}
+
+export const DECOR = { door: { lower: [[], []], upper: [[], []] }, ladder: [], bed: { foot: [], head: [] }, sign: { wall: [], stand: [] }, pot: { empty: 0, byPlant: new Map() } };
+DEFS.forEach(([, def], id) => {
+  if (def.item) BLOCK_ITEM[id] = B[def.item];
+  if (def.collide) COLLIDE[id] = def.collide.map((b) => rotateBox(b, def.rot));
+  if (def.model) {
+    const boxes = def.model.map((p) => rotateBox(p.box || p.cross, def.rot));
+    SELECT[id] = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b[k]))).concat([3, 4, 5].map((k) => Math.min(1, Math.max(...boxes.map((b) => b[k])))));
+  }
+  const v = def.variant;
+  if (!v) return;
+  VARIANT[id] = { ...v, plant: v.plant ? B[v.plant] : 0 };
+  if (v.kind === 'door') DECOR.door[v.half][v.open ? 1 : 0][v.rot] = id;
+  else if (v.kind === 'ladder') DECOR.ladder[v.rot] = id;
+  else if (v.kind === 'bed') DECOR.bed[v.part][v.rot] = id;
+  else if (v.kind === 'sign') DECOR.sign[v.wall ? 'wall' : 'stand'][v.rot] = id;
+  else if (v.kind === 'pot') {
+    if (v.plant) DECOR.pot.byPlant.set(B[v.plant], id);
+    else DECOR.pot.empty = id;
+  }
 });
 
 // Face order: +X, -X, +Y, -Y, +Z, -Z. "front" faces +Z (south).
@@ -139,6 +252,7 @@ export function allTextureNames() {
   for (const b of BLOCKS) {
     const faces = faceTextureNames(b);
     if (faces) faces.forEach((n) => names.add(n));
+    for (const part of MODEL[b.id]?.parts || []) part.tex.forEach((n) => names.add(n));
   }
   return [...names];
 }
@@ -148,6 +262,7 @@ export function resolveTextures(layerOf) {
     const faces = faceTextureNames(b);
     if (!faces) continue;
     for (let f = 0; f < 6; f++) FACE_TEX[b.id * 6 + f] = layerOf(faces[f]);
+    for (const part of MODEL[b.id]?.parts || []) part.layers = part.tex.map(layerOf);
   }
 }
 

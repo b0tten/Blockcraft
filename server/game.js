@@ -8,9 +8,10 @@ import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
 import { Fluids } from '../src/fluids.js';
 import { PrimedTNT, blast } from '../src/entities.js';
-import { B, BLOCKS, SOLID, LIQUID, REPLACEABLE } from '../src/blocks.js';
+import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
+import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
 import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, chunkKey } from '../src/constants.js';
-import { editsToArray } from '../src/world/edits.js';
+import { editsToArray, signsToArray } from '../src/world/edits.js';
 import { timeLabel } from '../src/sky.js';
 import { clamp } from '../src/math.js';
 import { PROTOCOL_VERSION, TICK_RATE, REACH, MAX_CHAT, NAME_RE, NAME_RULES, F_FLYING, F_SNEAKING } from '../src/net/protocol.js';
@@ -48,11 +49,11 @@ class Bucket {
 }
 
 export class GameServer {
-  constructor({ dir, meta, edits, players, config, log }) {
+  constructor({ dir, meta, edits, signs, players, config, log }) {
     this.dir = dir;
     this.config = config; // { name, motd, maxPlayers }
     this.meta = meta; // { name, seed, spawn, time, dayCycle, created }
-    this.newWorld(meta.seed, edits);
+    this.newWorld(meta.seed, edits, signs);
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
     this.clients = new Set();
     this.byId = new Map(); // joined players
@@ -64,8 +65,8 @@ export class GameServer {
     this.warned = new Set();
   }
 
-  newWorld(seed, edits) {
-    this.world = new ServerWorld(seed, edits);
+  newWorld(seed, edits, signs) {
+    this.world = new ServerWorld(seed, edits, signs);
     this.world.allow = (x, z) => this.inBorder(x, z);
     this.fluids = new Fluids(this.world);
     this.tnts = [];
@@ -105,7 +106,7 @@ export class GameServer {
     for (const c of [...this.clients]) this.kick(c, 'The world is being reset. Join again in a moment!');
     const seed = this.config.seed ?? Math.floor(Math.random() * 2147483647);
     this.meta = { ...this.meta, seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
-    this.newWorld(seed, new Map());
+    this.newWorld(seed, new Map(), new Map());
     this.saved = {};
     this.meta.spawn = this.world.findSpawn();
     this.warned = new Set();
@@ -212,6 +213,8 @@ export class GameServer {
       case 'unsub': return this.onUnsub(c, m);
       case 'set': return this.onSet(c, m);
       case 'ignite': return this.onIgnite(c, m);
+      case 'use': return this.onUse(c, m);
+      case 'sign': return this.onSign(c, m);
       case 'swing': return this.broadcast({ t: 'swing', id: c.id }, c);
       case 'chat': return this.onChat(c, m);
       default: // unknown types are ignored so newer clients can add optional messages
@@ -296,7 +299,7 @@ export class GameServer {
       if (c.subs.has(key)) continue;
       if (c.subs.size >= MAX_SUBS) return this.kick(c, 'Too many chunks requested');
       c.subs.add(key);
-      this.send(c, { t: 'chunk', cx, cz, e: editsToArray(this.world.edits.get(key)) });
+      this.send(c, { t: 'chunk', cx, cz, e: editsToArray(this.world.edits.get(key)), s: signsToArray(this.world.signs.get(key)) });
     }
   }
 
@@ -317,11 +320,15 @@ export class GameServer {
   }
 
   // Would a solid block at (x, y, z) overlap a player other than `except`?
-  occupied(x, y, z, except) {
+  // Would block `id` at (x, y, z) overlap a player other than `except`?
+  occupied(x, y, z, id, except) {
+    const boxes = SOLID[id] ? FULL_BOX : COLLIDE[id];
+    if (!boxes) return false;
     for (const o of this.byId.values()) {
       if (o === except || !o.pos) continue;
       const p = o.pos;
-      if (p[0] + HALF_W > x && p[0] - HALF_W < x + 1 && p[1] + HEIGHT > y && p[1] < y + 1 && p[2] + HALF_W > z && p[2] - HALF_W < z + 1) return true;
+      for (const b of boxes)
+        if (p[0] + HALF_W > x + b[0] && p[0] - HALF_W < x + b[3] && p[1] + HEIGHT > y + b[1] && p[1] < y + b[4] && p[2] + HALF_W > z + b[2] && p[2] - HALF_W < z + b[5]) return true;
     }
     return false;
   }
@@ -329,10 +336,12 @@ export class GameServer {
   // Tell a client the real blocks where it guessed wrong (the column above too, since the
   // client may also have removed plants that lost their support). For requests far from the
   // player, only answer from terrain in memory, so bogus requests can't make us generate chunks.
-  correct(c, x, y, z, cachedOnly = false) {
+  // `extra` lists other cells the client may have changed too (the other half of a door...).
+  correct(c, x, y, z, cachedOnly = false, extra = []) {
     if (cachedOnly && !this.world.chunks.has(chunkKey(x >> 4, z >> 4))) return;
     const b = [];
     for (let yy = y; yy < Math.min(WORLD_HEIGHT, y + 5); yy++) b.push(x, yy, z, this.world.getBlock(x, yy, z));
+    for (const [ex, ey, ez] of extra) if (ey >= 0 && ey < WORLD_HEIGHT) b.push(ex, ey, ez, this.world.getBlock(ex, ey, ez));
     this.send(c, { t: 'blocks', b });
   }
 
@@ -345,22 +354,55 @@ export class GameServer {
     if (!this.validPos(x, y, z) || !isInt(id)) return;
     if (!this.inReach(c, x, y, z)) return this.correct(c, x, y, z, !this.near(c, x, z, 32));
     if (!this.inBorder(x, z)) return this.correct(c, x, y, z);
-    const block = BLOCKS[id];
-    if (!block || (id !== 0 && !block.inventory) || !c.edits.take()) return this.correct(c, x, y, z);
     const w = this.world;
     const cur = w.getBlock(x, y, z);
+    const partner = linkedRemoval(w, cur, 0, x, y, z);
+    const extra = partner ? [partner] : [];
+    const block = BLOCKS[id];
+    if (!block || (id !== 0 && !block.inventory) || !c.edits.take()) return this.correct(c, x, y, z, false, extra);
     if (id === 0) {
       if (cur === 0) return;
-      if (LIQUID[cur]) return this.correct(c, x, y, z);
+      if (LIQUID[cur]) return this.correct(c, x, y, z, false, extra);
       w.setBlock(x, y, z, 0);
       this.fluids.notifyRemoved(x, y, z);
       this.event(x, z, { t: 'fx', k: 'break', x, y, z, id: cur }, c);
-    } else {
-      if (cur !== 0 && !REPLACEABLE[cur]) return this.correct(c, x, y, z);
-      if (SOLID[id] && this.occupied(x, y, z, c)) return this.correct(c, x, y, z);
-      w.setBlock(x, y, z, id);
-      this.event(x, z, { t: 'fx', k: 'place', x, y, z, id }, c);
+      return;
     }
+    // Placing goes through the same rules as in the client (doors and beds take two blocks).
+    const changes = placeChanges(w, x, y, z, id, isInt(m.r) ? m.r : 0, isInt(m.f) ? m.f : 2);
+    const cells = changes || [[x, y, z]];
+    if (!changes || changes.some(([cx, cy, cz, cid]) => !this.inBorder(cx, cz) || this.occupied(cx, cy, cz, cid, c))) {
+      return this.correct(c, x, y, z, false, cells.concat(this.neighbours(x, y, z)));
+    }
+    w.setBlocks(changes);
+    this.event(x, z, { t: 'fx', k: 'place', x, y, z, id: changes[0][3] }, c);
+  }
+
+  // Cells a two-block item could have taken next to (x, y, z), for corrections.
+  neighbours(x, y, z) {
+    return [[x + 1, y, z], [x - 1, y, z], [x, y, z + 1], [x, y, z - 1]];
+  }
+
+  onUse(c, m) {
+    const { x, y, z } = m;
+    const held = isInt(m.id) && BLOCKS[m.id] && (m.id === 0 || BLOCKS[m.id].inventory) ? m.id : 0;
+    if (!this.validPos(x, y, z)) return;
+    if (!this.inReach(c, x, y, z)) return this.correct(c, x, y, z, !this.near(c, x, z, 32));
+    const extra = [[x, y - 1, z]];
+    if (!this.inBorder(x, z) || !c.edits.take()) return this.correct(c, x, y, z, false, extra);
+    const changes = useChanges(this.world, x, y, z, held);
+    if (!changes) return this.correct(c, x, y, z, false, extra);
+    this.world.setBlocks(changes);
+    this.event(x, z, { t: 'fx', k: 'place', x, y, z, id: changes[0][3] }, c);
+  }
+
+  onSign(c, m) {
+    const { x, y, z } = m;
+    const lines = cleanSignLines(m.l);
+    if (!this.validPos(x, y, z) || !lines || !this.inReach(c, x, y, z) || !c.edits.take()) return;
+    if (!isSign(this.world.getBlock(x, y, z))) return;
+    this.world.setSign(x, y, z, lines);
+    this.event(x, z, { t: 'sign', x, y, z, l: lines }, c);
   }
 
   onIgnite(c, m) {
@@ -520,7 +562,7 @@ export class GameServer {
   save() {
     if (!this.saving) {
       for (const c of this.byId.values()) this.remember(c);
-      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, players: this.saved })
+      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, signs: this.world.signs, players: this.saved })
         .catch((err) => this.log(`Saving failed: ${err.message}`))
         .finally(() => (this.saving = null));
     }
