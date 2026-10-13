@@ -5,6 +5,13 @@ import { listWorlds, deleteWorld, loadMultiplayer } from './storage.js';
 import { OFFICIAL_SITE } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Quick-command buttons above the chat box. With nothing (or just "/...") typed they offer
+// commands; tapping one types it, and once a command is typed its options appear.
+const QUICK = {
+  '/time': [['Day', '/time set day'], ['Noon', '/time set noon'], ['Sunset', '/time set sunset'], ['Night', '/time set night'], ['Midnight', '/time set midnight']],
+  '/daycycle': [['On', '/daycycle on'], ['Off', '/daycycle off']],
+};
 // The game server marks the pages it serves, so other hosts never get asked for /api/info.
 const servedByGameServer = () => !!document.querySelector('meta[name="blockcraft-server"]');
 
@@ -42,6 +49,29 @@ export class UI {
       }
       e.stopPropagation();
     });
+    $('chat-close').addEventListener('click', () => {
+      this.closeChat();
+      game.resume();
+    });
+    // Keep the chat box focused (and the phone keyboard open) when a quick button is tapped.
+    $('chat-quick').addEventListener('pointerdown', (e) => e.preventDefault());
+    $('chat-quick').addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      game.sound.click();
+      if (btn.dataset.fill) {
+        const input = $('chat-input');
+        input.value = `${btn.dataset.fill} `;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        this.renderQuick();
+        return;
+      }
+      this.closeChat();
+      game.runChat(btn.dataset.cmd);
+      game.resume();
+    });
+    $('chat-input').addEventListener('input', () => this.renderQuick());
     $('click-to-play').addEventListener('click', () => game.resume());
     $('world-list').addEventListener('click', (e) => {
       const item = e.target.closest('.item');
@@ -365,21 +395,45 @@ export class UI {
 
   // ------------------------------------------------------------ chat
 
-  openChat(prefix = '') {
+  // `now`: focus at once (from a tap, so phones open their keyboard); otherwise wait until
+  // after the key that opened chat, so that key isn't typed.
+  openChat(prefix = '', now = false) {
     const form = $('chat');
     form.hidden = false;
+    $('hud').classList.add('chatting');
     const input = $('chat-input');
     input.value = prefix;
-    // Focus after the key event that opened chat, so the key itself isn't typed.
-    setTimeout(() => {
+    const focus = () => {
       input.focus();
       input.setSelectionRange(prefix.length, prefix.length);
-    }, 0);
+    };
+    if (now) focus();
+    else setTimeout(focus, 0);
+    this.renderQuick();
     for (const d of $('chat-log').children) d.classList.remove('fade');
+  }
+
+  renderQuick() {
+    const el = $('chat-quick');
+    const text = $('chat-input').value.trim().toLowerCase();
+    el.innerHTML = '';
+    const add = (label, data) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      Object.assign(b.dataset, data);
+      el.appendChild(b);
+    };
+    const typed = Object.keys(QUICK).find((cmd) => text === cmd || text.startsWith(`${cmd} `));
+    if (typed) for (const [label, cmd] of QUICK[typed]) add(label, { cmd });
+    else if (text === '' || (text.startsWith('/') && !text.includes(' ')))
+      for (const cmd of Object.keys(QUICK)) if (cmd.startsWith(text)) add(cmd, { fill: cmd });
+    el.hidden = !el.children.length;
   }
 
   closeChat() {
     $('chat').hidden = true;
+    $('hud').classList.remove('chatting');
     $('chat-input').blur();
     this.fadeLog();
   }

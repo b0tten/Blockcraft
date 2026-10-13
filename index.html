@@ -16,6 +16,9 @@
       <div id="joy" hidden><div id="joy-knob"></div></div>
       <button id="t-pause" class="tbtn small" aria-label="Pause">II</button>
       <button id="t-inv" class="tbtn small" aria-label="Inventory">&#9776;</button>
+      <button id="t-chat" class="tbtn small" aria-label="Chat and commands">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M3 4h18v12H9l-5 4v-4H3z" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </button>
       <button id="t-sneak" class="tbtn" aria-label="Sneak / fly down">&#8595;</button>
       <button id="t-jump" class="tbtn" aria-label="Jump (double-tap to fly)">&#8593;</button>
     </div>
@@ -31,7 +34,12 @@
       <div id="hotbar"></div>
       <div id="toast"></div>
       <form id="chat" hidden autocomplete="off">
-        <input id="chat-input" spellcheck="false" maxlength="120" />
+        <div id="chat-quick"></div>
+        <div class="chat-row">
+          <input id="chat-input" spellcheck="false" maxlength="120" placeholder="Chat, or /help for commands" />
+          <button type="submit" id="chat-send">Send</button>
+          <button type="button" id="chat-close" aria-label="Close chat">&times;</button>
+        </div>
       </form>
       <div id="click-to-play" hidden><span>Click to play</span></div>
     </div>

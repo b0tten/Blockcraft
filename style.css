@@ -189,6 +189,13 @@ body {
   flex-direction: column;
   gap: 1px;
 }
+/* With chat open, the log sits above the quick-command buttons. */
+#hud.chatting #chat-log {
+  bottom: calc(var(--slot) + 112px);
+}
+body.touch-mode #hud.chatting #chat-log {
+  bottom: calc(var(--slot) + 124px);
+}
 #chat-log div {
   background: rgba(0, 0, 0, 0.45);
   padding: 2px 6px;
@@ -205,7 +212,44 @@ body {
   bottom: calc(var(--slot) + 36px);
   pointer-events: auto;
 }
+#chat-quick[hidden] {
+  display: none;
+}
+#chat-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+#chat-quick button,
+#chat-send,
+#chat-close {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.chat-row {
+  display: flex;
+  gap: 4px;
+}
+#chat-send,
+#chat-close {
+  display: none;
+}
+body.touch-mode #chat-send,
+body.touch-mode #chat-close {
+  display: block;
+  height: auto;
+}
+body.touch-mode #chat-quick button {
+  height: 38px;
+  padding: 0 14px;
+}
 #chat input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   font: 15px var(--font);
   color: #fff;
@@ -697,6 +741,13 @@ input[type='checkbox'] {
 #t-inv {
   right: 64px;
   top: 12px;
+}
+#t-chat {
+  right: 116px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 body.touch-mode #hotbar .slot {
   pointer-events: auto;
