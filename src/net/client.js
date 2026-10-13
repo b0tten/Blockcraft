@@ -1,6 +1,7 @@
 // Browser side of the multiplayer connection (see protocol.js for the messages).
 
 import { PROTOCOL_VERSION, DEFAULT_PORT } from './protocol.js';
+import { getBrowserId } from '../storage.js';
 
 // Turn what the player typed ("host", "host:port", "ws://…", "https://…") into a WebSocket URL.
 export function serverURL(address, page = location) {
@@ -40,7 +41,7 @@ export class Connection {
     const ws = (this.ws = new WebSocket(url));
     ws.onopen = () => {
       this.opened = true;
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name, opKey: this.opKey ?? undefined });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name, bid: getBrowserId(), opKey: this.opKey ?? undefined });
     };
     ws.onmessage = (e) => {
       let msg;
