@@ -327,6 +327,7 @@ class Game {
     for (const o of msg.players) this.remote.add(o.id, o.name);
     this.lastSent = null;
     this.netTimer = 0;
+    this.isOp = false;
     this.beginSession();
   }
 
@@ -366,6 +367,11 @@ class Game {
         break;
       case 'swing':
         this.remote.swing(m.id);
+        break;
+      case 'op':
+        this.isOp = !!m.on;
+        conn.setOpKey(m.on ? String(m.key || '') : null);
+        this.ui.toast(m.on ? 'You are an operator' : 'You are no longer an operator');
         break;
       case 'tp':
         if (Array.isArray(m.p) && m.p.length === 3 && m.p.every(Number.isFinite)) {
@@ -535,6 +541,7 @@ class Game {
     this.touch.show(false);
     this.ui.setClickToPlay(false);
     this.ui.setQuitLabel(this.net ? 'Disconnect' : 'Save and Quit to Title');
+    if (this.isOp) this.ui.toast('You stay an operator for 5 minutes after leaving. /deop gives it up now.', 4000);
     this.ui.reset('pause');
     this.save();
   }
@@ -976,7 +983,7 @@ class Game {
       t ? `Target: ${BLOCKS[t.block].name} @ ${t.x} ${t.y} ${t.z}` : 'Target: —',
       `Seed: ${w.seed}`,
     ];
-    if (this.net) lines.push(`Server: ${this.meta.name}, ${this.remote.size + 1} online`);
+    if (this.net) lines.push(`Server: ${this.meta.name}, ${this.remote.size + 1} online${this.isOp ? ', you are an operator' : ''}`);
     this.ui.setDebug(lines.join('\n'));
   }
 
@@ -987,7 +994,9 @@ class Game {
     const [cmdRaw, ...args] = command ? text.slice(1).split(/\s+/) : [];
     const cmd = (cmdRaw || '').toLowerCase();
     // Online, chat and world-wide commands (time, player list) go to the server.
-    if (this.net && (!command || SERVER_COMMANDS.has(cmd))) {
+    // "/tp <name>" (one non-number) is the operator command; "/tp x y z" stays here.
+    const tpToPlayer = cmd === 'tp' && args.length === 1 && !/^[~\-\d.]/.test(args[0]);
+    if (this.net && (!command || SERVER_COMMANDS.has(cmd) || tpToPlayer)) {
       this.net.send({ t: 'chat', m: text });
       return;
     }
@@ -1001,7 +1010,8 @@ class Game {
       case 'help':
         log(
           'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /rd <2-16>, /give <block>' +
-            (this.net ? ', /list' : ''),
+            (this.net ? ', /list' : '') +
+            (this.isOp ? '. Operator commands: /ophelp' : ''),
         );
         break;
       case 'time': {

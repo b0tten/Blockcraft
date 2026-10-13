@@ -424,10 +424,19 @@ export class UI {
       Object.assign(b.dataset, data);
       el.appendChild(b);
     };
-    const typed = Object.keys(QUICK).find((cmd) => text === cmd || text.startsWith(`${cmd} `));
-    if (typed) for (const [label, cmd] of QUICK[typed]) add(label, { cmd });
+    const quick = { ...QUICK };
+    const g = this.game;
+    if (g.net && g.isOp) {
+      // Operators also get player commands, with the online players as options.
+      const names = g.remote ? g.remote.names() : [];
+      quick['/kick'] = names.map((n) => [n, `/kick ${n}`]);
+      quick['/tp'] = names.map((n) => [n, `/tp ${n}`]);
+      quick['/deop'] = [['Give up operator', '/deop']];
+    }
+    const typed = Object.keys(quick).find((cmd) => text === cmd || text.startsWith(`${cmd} `));
+    if (typed) for (const [label, cmd] of quick[typed]) add(label, { cmd });
     else if (text === '' || (text.startsWith('/') && !text.includes(' ')))
-      for (const cmd of Object.keys(QUICK)) if (cmd.startsWith(text)) add(cmd, { fill: cmd });
+      for (const cmd of Object.keys(quick)) if (cmd.startsWith(text)) add(cmd, { fill: cmd });
     el.hidden = !el.children.length;
   }
 
