@@ -42,6 +42,19 @@ export class UI {
       }
       e.stopPropagation();
     });
+    $('chat-close').addEventListener('click', () => {
+      this.closeChat();
+      game.resume();
+    });
+    // Quick commands: run straight away, like typing them.
+    $('chat-quick').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-cmd]');
+      if (!btn) return;
+      game.sound.click();
+      this.closeChat();
+      game.runChat(btn.dataset.cmd);
+      game.resume();
+    });
     $('click-to-play').addEventListener('click', () => game.resume());
     $('world-list').addEventListener('click', (e) => {
       const item = e.target.closest('.item');
@@ -365,21 +378,26 @@ export class UI {
 
   // ------------------------------------------------------------ chat
 
-  openChat(prefix = '') {
+  // `now`: focus at once (from a tap, so phones open their keyboard); otherwise wait until
+  // after the key that opened chat, so that key isn't typed.
+  openChat(prefix = '', now = false) {
     const form = $('chat');
     form.hidden = false;
+    $('hud').classList.add('chatting');
     const input = $('chat-input');
     input.value = prefix;
-    // Focus after the key event that opened chat, so the key itself isn't typed.
-    setTimeout(() => {
+    const focus = () => {
       input.focus();
       input.setSelectionRange(prefix.length, prefix.length);
-    }, 0);
+    };
+    if (now) focus();
+    else setTimeout(focus, 0);
     for (const d of $('chat-log').children) d.classList.remove('fade');
   }
 
   closeChat() {
     $('chat').hidden = true;
+    $('hud').classList.remove('chatting');
     $('chat-input').blur();
     this.fadeLog();
   }

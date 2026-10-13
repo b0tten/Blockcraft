@@ -565,11 +565,11 @@ class Game {
     this.resume();
   }
 
-  openChat(prefix) {
+  openChat(prefix, now = false) {
     this.state = 'chat';
     this.touch.show(false);
     this.input.exitLock();
-    this.ui.openChat(prefix);
+    this.ui.openChat(prefix, now);
   }
 
   toggleFly() {

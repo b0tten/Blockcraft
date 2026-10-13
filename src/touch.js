@@ -63,6 +63,9 @@ export class TouchControls {
     hold('t-sneak', () => (this.sneak = true), () => (this.sneak = false));
     hold('t-inv', () => this.game.openInventory());
     hold('t-pause', () => this.game.pause());
+    // A click (not pointerdown), so focusing the chat box counts as a user gesture and
+    // phones show their keyboard.
+    document.getElementById('t-chat').addEventListener('click', () => this.game.openChat('', true));
 
     document.getElementById('hotbar').addEventListener('pointerdown', (e) => {
       const slot = e.target.closest('.slot');
