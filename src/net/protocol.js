@@ -9,7 +9,10 @@
 //                                      moving; ms = sender's clock, for smooth playback
 //   sub    { c: [cx, cz, cx, cz, ...] } start receiving edits for these chunks
 //   unsub  { c: [cx, cz, ...] }        stop receiving edits for these chunks
-//   set    { x, y, z, id }             break (id 0) or place a block
+//   set    { x, y, z, id, r, f }       break (id 0) or place an item; r = facing (0 north,
+//                                      1 east, 2 south, 3 west), f = clicked face (0-5)
+//   use    { x, y, z, id }             right-click a block (doors, flower pots) holding id
+//   sign   { x, y, z, l: [4 lines] }   set the text of a sign
 //   ignite { x, y, z }                 light a TNT block
 //   swing  {}                          arm swing, shown to other players
 //   chat   { m }                       chat line, or a /command the server handles
@@ -17,7 +20,8 @@
 // Server -> client
 //   welcome { v, id, name, server, motd, seed, time, cycle, spawn: [x, y, z], you, players: [{ id, name }] }
 //   bye     { reason }                 sent right before the server closes the connection
-//   chunk   { cx, cz, e: [index, id, ...] }   all edits of a subscribed chunk (reply to sub)
+//   chunk   { cx, cz, e: [index, id, ...], s: [[index, lines], ...] }   all edits and sign
+//                                      text of a subscribed chunk (reply to sub)
 //   blocks  { b: [x, y, z, id, ...] }  block changes in subscribed chunks, in the order they happened
 //   players { s: [[id, x, y, z, yaw, pitch, f, ms], ...] }   other players that moved
 //   join    { id, name }   leave { id, name }
@@ -27,9 +31,10 @@
 //   boom    { x, y, z, r, d: [x, y, z, id, ...] }   explosion (d = blocks to show debris for)
 //   fx      { k: 'break' | 'place', x, y, z, id }   another player's edit, for particles and sound
 //   swing   { id }
+//   sign    { x, y, z, l }             someone changed a sign's text
 //   tp      { p: [x, y, z] }           move the player (e.g. back from the world border)
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const DEFAULT_PORT = 8765;
 export const TICK_RATE = 20;
 export const REACH = 6;

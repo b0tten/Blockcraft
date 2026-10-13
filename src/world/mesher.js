@@ -10,7 +10,7 @@
 //   u8  pad x2
 
 import { WORLD_HEIGHT as H, chunkKey } from '../constants.js';
-import { OPAQUE, RENDER, FACE_TEX, CULL_SELF, LIQUID, WAVE, R_NONE, R_TRANSLUCENT, R_CROSS, R_TORCH } from '../blocks.js';
+import { OPAQUE, RENDER, FACE_TEX, CULL_SELF, LIQUID, WAVE, R_NONE, R_TRANSLUCENT, R_CROSS, R_TORCH, R_MODEL, MODEL, ROT_FACE, rotateXZ } from '../blocks.js';
 
 const PW = 18;
 const PA = PW * PW;
@@ -170,6 +170,9 @@ export function buildChunkMesh(world, chunk) {
         } else if (r === R_TORCH) {
           emitTorch(opaqueOut, x, y, z, b, pLight[pi]);
           emitted = true;
+        } else if (r === R_MODEL) {
+          emitModel(opaqueOut, x, y, z, b, pLight[pi]);
+          emitted = true;
         } else {
           const out = r === R_TRANSLUCENT ? transOut : opaqueOut;
           const liquid = LIQUID[b];
@@ -297,5 +300,55 @@ function emitTorch(out, x, y, z, b, light) {
       else { u = QUAD_UV[v][0] ? 9 : 7; tv = c[1] ? 6 : 16; }
       out.vert(bx + px, by + py, bz + pz, layer, u, tv, f, 3, sky, blk);
     }
+  }
+}
+
+// Box models (doors, beds, signs, ...). Texture coordinates come from the model's own,
+// unturned coordinates, so textures stay put on the model when it is turned.
+const FACE_UV = FACE_VERTS.map((v) => {
+  const ua = [0, 1, 2].find((a) => v[0][a] !== v[1][a]);
+  const va = [0, 1, 2].find((a) => v[0][a] !== v[3][a]);
+  return { ua, uflip: v[1][ua] < v[0][ua], va, vflip: v[3][va] < v[0][va] };
+});
+const corner = [0, 0, 0];
+
+function emitModel(out, x, y, z, b, light) {
+  const { parts, rot } = MODEL[b];
+  const sky = (light >> 4) * 17, blk = (light & 15) * 17;
+  const bx = x * 16, by = y * 16, bz = z * 16;
+  for (const part of parts) {
+    if (part.cross) {
+      emitCrossPart(out, bx, by, bz, part.cross, part.layers[0], sky, blk);
+      continue;
+    }
+    const bb = part.box;
+    for (let f = 0; f < 6; f++) {
+      const verts = FACE_VERTS[f], uv = FACE_UV[f], rf = ROT_FACE[rot][f];
+      for (let v = 0; v < 4; v++) {
+        const c = verts[v];
+        corner[0] = c[0] ? bb[3] : bb[0];
+        corner[1] = c[1] ? bb[4] : bb[1];
+        corner[2] = c[2] ? bb[5] : bb[2];
+        const cu = corner[uv.ua], cv = corner[uv.va];
+        const u = uv.uflip ? 16 - cu : cu;
+        const tv = uv.vflip ? cv : 16 - cv;
+        const [rx, rz] = rotateXZ(corner[0], corner[2], rot);
+        out.vert(bx + rx, by + corner[1], bz + rz, part.layers[f], u, tv, rf, 3, sky, blk);
+      }
+    }
+  }
+}
+
+function emitCrossPart(out, bx, by, bz, c, layer, sky, blk) {
+  const [x0, y0, z0, x1, y1, z1] = c;
+  for (const [ax, az, cx, cz] of [[x0, z0, x1, z1], [x0, z1, x1, z0]]) {
+    out.vert(bx + ax, by + y0, bz + az, layer, 0, 16, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + cx, by + y0, bz + cz, layer, 16, 16, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + cx, by + y1, bz + cz, layer, 16, 0, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + ax, by + y1, bz + az, layer, 0, 0, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + cx, by + y0, bz + cz, layer, 16, 16, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + ax, by + y0, bz + az, layer, 0, 16, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + ax, by + y1, bz + az, layer, 0, 0, FACE_PLANT, 3, sky, blk);
+    out.vert(bx + cx, by + y1, bz + cz, layer, 16, 0, FACE_PLANT, 3, sky, blk);
   }
 }

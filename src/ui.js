@@ -5,6 +5,8 @@ import { listWorlds, deleteWorld, loadMultiplayer } from './storage.js';
 import { OFFICIAL_SITE } from './net/protocol.js';
 
 const $ = (id) => document.getElementById(id);
+// The game server marks the pages it serves, so other hosts never get asked for /api/info.
+const servedByGameServer = () => !!document.querySelector('meta[name="blockcraft-server"]');
 
 export class UI {
   constructor(game) {
@@ -179,7 +181,7 @@ export class UI {
 
   // When the page itself comes from a Blockcraft server, remember its details.
   probeHost() {
-    if (!/^https?:$/.test(location.protocol)) return;
+    if (!servedByGameServer()) return;
     fetch('api/info')
       .then((r) => (r.ok ? r.json() : null))
       .then((info) => {
@@ -202,7 +204,7 @@ export class UI {
     this.push('multiplayer');
     (saved.address ? $('mp-name') : $('mp-address')).focus();
     // When the page itself comes from a Blockcraft server, offer that server.
-    if (!saved.address && /^https?:$/.test(location.protocol)) {
+    if (!saved.address && servedByGameServer()) {
       fetch('api/info')
         .then((r) => (r.ok ? r.json() : null))
         .then((info) => {
@@ -495,6 +497,55 @@ export class UI {
     $('inventory').hidden = true;
     $('tooltip').hidden = true;
     this.hoveredBlock = 0;
+  }
+
+  // ------------------------------------------------------------ sign editor
+
+  openSignEditor(lines, onDone) {
+    const el = $('sign-editor');
+    const inputs = [...el.querySelectorAll('.sign-line')];
+    const form = el.querySelector('form');
+    inputs.forEach((inp, i) => (inp.value = lines[i] || ''));
+    el.hidden = false;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      document.activeElement?.blur();
+      el.hidden = true;
+      form.onsubmit = null;
+      for (const inp of inputs) inp.onkeydown = null;
+      onDone(inputs.map((inp) => inp.value));
+    };
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      finish();
+    };
+    inputs.forEach((inp, i) => {
+      inp.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          finish();
+        } else if (e.key === 'Enter' && i < inputs.length - 1) {
+          e.preventDefault();
+          inputs[i + 1].focus();
+        }
+      };
+    });
+    this.signFinish = finish;
+    inputs[0].focus();
+    // Again after the click that opened it, in case leaving pointer lock moved focus.
+    setTimeout(() => !done && el.contains(document.activeElement) === false && inputs[0].focus(), 0);
+  }
+
+  // Close without saving (leaving the world).
+  closeSignEditor() {
+    if (!this.signFinish) return;
+    const el = $('sign-editor');
+    el.querySelector('form').onsubmit = null;
+    el.hidden = true;
+    this.signFinish = null;
   }
 
   get inventoryOpen() {

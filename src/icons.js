@@ -1,6 +1,6 @@
 // Inventory icons: isometric cubes (or flat sprites) painted onto small canvases.
 
-import { BLOCKS, RENDER, R_CROSS, R_TORCH, faceTextureNames } from './blocks.js';
+import { BLOCKS, RENDER, R_CROSS, R_TORCH, R_ITEM, faceTextureNames } from './blocks.js';
 
 function textureCanvas(pixels, shade) {
   const c = document.createElement('canvas');
@@ -33,7 +33,7 @@ export function makeIcons(tex, size = 48) {
     const ctx = c.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     const r = RENDER[b.id];
-    if (r === R_CROSS || r === R_TORCH) {
+    if (r === R_CROSS || r === R_TORCH || r === R_ITEM) {
       ctx.drawImage(texCanvas(faces[0], 1), 0, 0, size, size);
     } else {
       const S = size, k = S / 16;

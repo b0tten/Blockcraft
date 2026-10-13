@@ -716,6 +716,114 @@ PAINTERS.avatar_face = (t) => {
   for (let x = 5; x <= 10; x++) t.set(x, 13, [120, 70, 52]);
 };
 
+// Decoration blocks.
+const OAK = [164, 132, 80];
+const BED_RED = [168, 32, 32];
+const CLAY = [152, 82, 56];
+function doorHalf(t, top) {
+  for (let y = 0; y < 16; y++)
+    for (let x = 0; x < 16; x++) {
+      const grain = 0.94 + ((x * 7 + (x >> 2) * 3) % 5) * 0.025 + (t.rand() - 0.5) * 0.05;
+      t.set(x, y, scale(OAK, grain));
+    }
+  for (let i = 0; i < 16; i++) {
+    t.mul(0, i, 0.72);
+    t.mul(15, i, 0.72);
+    t.mul(i, top ? 0 : 15, 0.72);
+  }
+  if (top) {
+    for (const x0 of [3, 9])
+      for (let y = 3; y <= 9; y++)
+        for (let x = x0; x < x0 + 4; x++) {
+          const edge = y === 3 || y === 9 || x === x0 || x === x0 + 3;
+          t.set(x, y, edge ? scale(OAK, 0.66) : y + x - x0 < 7 ? [214, 230, 236] : [176, 202, 214]);
+        }
+  } else {
+    for (let y = 2; y <= 12; y++)
+      for (let x = 3; x <= 12; x++) t.mul(x, y, y === 2 || x === 3 ? 0.78 : y === 12 || x === 12 ? 1.08 : 0.9);
+    for (const y of [0, 1]) t.set(13, y, [64, 64, 66]);
+  }
+}
+Object.assign(PAINTERS, {
+  ladder: (t) => {
+    t.clear();
+    for (let y = 0; y < 16; y++)
+      for (const [x, f] of [[2, 0.82], [3, 0.66], [12, 0.82], [13, 0.66]]) t.set(x, y, scale(OAK, f * (0.95 + t.rand() * 0.1)));
+    for (const y0 of [1, 5, 9, 13])
+      for (let x = 4; x <= 11; x++) {
+        t.set(x, y0, scale(OAK, 1.02 + t.rand() * 0.06));
+        t.set(x, y0 + 1, scale(OAK, 0.74));
+      }
+  },
+  door_top: (t) => doorHalf(t, true),
+  door_bottom: (t) => doorHalf(t, false),
+  door_item: (t) => {
+    t.clear();
+    for (let y = 0; y < 16; y++)
+      for (let x = 4; x <= 11; x++) {
+        const edge = x === 4 || x === 11 || y === 0 || y === 15;
+        const pane = y >= 2 && y <= 5 && (x === 6 || x === 9);
+        t.set(x, y, pane ? [196, 216, 226] : scale(OAK, edge ? 0.7 : 0.95 + t.rand() * 0.08));
+      }
+    t.set(10, 9, [64, 64, 66]);
+  },
+  bed_head_top: (t) => {
+    t.speckle(BED_RED, 0.1);
+    for (let y = 1; y <= 5; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale([232, 232, 228], y === 5 ? 0.86 : 0.97 + t.rand() * 0.05));
+    for (let i = 0; i < 16; i++) {
+      t.mul(0, i, 0.8);
+      t.mul(15, i, 0.8);
+    }
+  },
+  bed_foot_top: (t) => {
+    t.speckle(BED_RED, 0.1);
+    for (let x = 0; x < 16; x++) t.mul(x, 2, 0.8);
+    for (let i = 0; i < 16; i++) {
+      t.mul(0, i, 0.8);
+      t.mul(15, i, 0.8);
+    }
+  },
+  bed_side: (t) => {
+    for (let y = 0; y < 16; y++)
+      for (let x = 0; x < 16; x++) {
+        const c = y <= 9 ? scale(BED_RED, y === 9 ? 0.78 : 0.95 + t.rand() * 0.1) : y <= 11 ? [222, 222, 216] : scale(OAK, y === 12 ? 0.72 : 0.9 + t.rand() * 0.08);
+        t.set(x, y, c);
+      }
+  },
+  bed_item: (t) => {
+    t.clear();
+    for (let x = 0; x < 16; x++) {
+      for (let y = 6; y <= 9; y++) t.set(x, y, x <= 3 && y <= 8 ? [232, 232, 228] : scale(BED_RED, y === 9 ? 0.8 : 1));
+      for (const y of [10, 11]) t.set(x, y, scale(OAK, 0.8));
+    }
+    for (const x of [0, 1, 14, 15]) for (const y of [12, 13]) t.set(x, y, scale(OAK, 0.66));
+  },
+  bed_end: (t) => PAINTERS.bed_side(t),
+  sign: (t) => planks(t, [178, 144, 90]),
+  sign_item: (t) => {
+    t.clear();
+    for (let y = 1; y <= 9; y++) for (let x = 1; x <= 14; x++) t.set(x, y, scale([178, 144, 90], x === 1 || x === 14 || y === 1 || y === 9 ? 0.72 : 0.95 + t.rand() * 0.08));
+    for (const y of [3, 5, 7]) for (let x = 3; x <= 12; x++) if (t.rand() < 0.7) t.set(x, y, [60, 44, 26]);
+    for (let y = 10; y < 16; y++) {
+      t.set(7, y, [112, 86, 52]);
+      t.set(8, y, [88, 68, 40]);
+    }
+  },
+  flower_pot: (t) => {
+    t.speckle(CLAY, 0.1);
+    for (let x = 0; x < 16; x++) t.mul(x, 10, 1.15);
+  },
+  flower_pot_top: (t) => {
+    t.speckle(CLAY, 0.1);
+    for (let y = 6; y <= 9; y++) for (let x = 6; x <= 9; x++) t.set(x, y, scale([88, 60, 38], 0.9 + t.rand() * 0.2));
+  },
+  flower_pot_item: (t) => {
+    t.clear();
+    for (let x = 4; x <= 11; x++) t.set(x, 8, scale(CLAY, 1.15));
+    for (let y = 9; y < 16; y++) for (let x = 5; x <= 10; x++) t.set(x, y, scale(CLAY, x === 5 ? 0.8 : 0.95 + t.rand() * 0.1));
+  },
+});
+
 // Give fully transparent pixels the average opaque color so mipmaps don't get dark fringes.
 function bleedTransparent(data) {
   let r = 0, g = 0, b = 0, n = 0;
