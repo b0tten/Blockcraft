@@ -38,7 +38,7 @@ Usage: node server/index.js [options]
   -h, --help          show this help
 
 Console commands: help, list, say <message>, kick <name> [reason], time set <time>,
-daycycle <on|off>, reset, cert, save, stop`;
+daycycle <on|off>, op <name>, deop <name>, reset, cert, save, stop`;
 
 const OPTIONS = {
     port: { type: 'string' },
@@ -90,6 +90,7 @@ const config = {
   name: String(opt.name ?? env.SERVER_NAME ?? 'Blockcraft Server').slice(0, 64),
   motd: String(opt.motd ?? env.MOTD ?? '').slice(0, 200),
   maxPlayers: Math.max(1, Number(opt['max-players'] ?? env.MAX_PLAYERS ?? 20) || 20),
+  opGraceMs: env.OP_GRACE_SECONDS ? Number(env.OP_GRACE_SECONDS) * 1000 : undefined,
   border: Math.max(0, Math.floor(Number(opt.border ?? env.BORDER ?? 0)) || 0),
   resetDays: Math.max(0, Number(opt['reset-days'] ?? env.RESET_DAYS ?? 0) || 0),
   seed: (opt.seed ?? env.SEED) ? parseSeed(opt.seed ?? env.SEED) : null,
@@ -276,7 +277,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     case '':
       return;
     case 'help':
-      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, reset, cert, save, stop');
+      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, op <name>, deop <name>, reset, cert, save, stop');
     case 'say':
       return args.length && game.announce(`[Server] ${args.join(' ')}`);
     case 'kick': {
@@ -285,6 +286,16 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
       game.kick(c, args.slice(1).join(' ') || 'Kicked by an operator');
       return log(`Kicked ${c.name}`);
     }
+    case 'op': {
+      const c = game.findOnline(args[0]);
+      if (!c) return log(`No player called "${args[0] ?? ''}" is online (operators must be online to be made one)`);
+      if (c.op) return log(`${c.name} is already an operator`);
+      return game.grantOp(c, 'The console');
+    }
+    case 'deop':
+      if (!args[0]) return log('Usage: deop <name>');
+      if (!game.revokeOp(args[0], 'The console')) log(`${args[0]} is not an operator`);
+      return;
     case 'reset':
       return game.resetWorld();
     case 'cert':

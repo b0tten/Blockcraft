@@ -4,7 +4,7 @@
 // Block positions are integers; `id` is a block id from blocks.js.
 //
 // Client -> server
-//   hello  { v, name }                 first message; v = PROTOCOL_VERSION
+//   hello  { v, name, opKey? }         first message; v = PROTOCOL_VERSION; opKey from an `op`
 //   pos    { p: [x, y, z], r: [yaw, pitch], f, ms }   own position, ~20 times a second while
 //                                      moving; ms = sender's clock, for smooth playback
 //   sub    { c: [cx, cz, cx, cz, ...] } start receiving edits for these chunks
@@ -33,6 +33,8 @@
 //   swing   { id }
 //   sign    { x, y, z, l }             someone changed a sign's text
 //   tp      { p: [x, y, z] }           move the player (e.g. back from the world border)
+//   op      { on, key? }               you became (or stopped being) an operator; send key back
+//                                      as opKey when rejoining to keep it for a few minutes
 
 export const PROTOCOL_VERSION = 2;
 export const DEFAULT_PORT = 8765;
@@ -51,4 +53,4 @@ export const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
 export const NAME_RULES = 'Names are 1–16 letters, digits or underscores.';
 
 // Chat commands the server runs (everything else is handled by the client).
-export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who']);
+export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who', 'ophelp', 'kick', 'say', 'op', 'deop', 'save']);

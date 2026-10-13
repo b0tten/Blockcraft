@@ -30,10 +30,17 @@ export class Connection {
     this.reason = null;
     this.opened = false;
     this.closedByUs = false;
+    // Operator key for this server and name, kept for this browser tab only.
+    this.keySlot = `blockcraft:op:${url}|${name.toLowerCase()}`;
+    try {
+      this.opKey = sessionStorage.getItem(this.keySlot);
+    } catch {
+      this.opKey = null;
+    }
     const ws = (this.ws = new WebSocket(url));
     ws.onopen = () => {
       this.opened = true;
-      this.send({ t: 'hello', v: PROTOCOL_VERSION, name });
+      this.send({ t: 'hello', v: PROTOCOL_VERSION, name, opKey: this.opKey ?? undefined });
     };
     ws.onmessage = (e) => {
       let msg;
@@ -51,6 +58,16 @@ export class Connection {
       const fallback = this.opened ? 'The connection to the server was lost.' : 'Could not reach the server. Check the address and that the server is running.';
       onClose(this.reason || e.reason || fallback);
     };
+  }
+
+  setOpKey(key) {
+    this.opKey = key || null;
+    try {
+      if (key) sessionStorage.setItem(this.keySlot, key);
+      else sessionStorage.removeItem(this.keySlot);
+    } catch {
+      /* storage unavailable: the key lasts until this connection closes */
+    }
   }
 
   send(msg) {

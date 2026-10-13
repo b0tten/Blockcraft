@@ -4,6 +4,7 @@
 // Movement is trusted from clients (like most block games), but every block change is
 // checked and applied here first, then broadcast in order, so all clients agree.
 
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
 import { Fluids } from '../src/fluids.js';
@@ -23,6 +24,10 @@ const MAX_SUBS = 4096;
 const EYE = 1.62;
 const HALF_W = 0.3;
 const HEIGHT = 1.8;
+const OP_GRACE_MS = 5 * 60 * 1000;
+const sha256 = (s) => createHash('sha256').update(String(s)).digest();
+const OP_HELP = 'Operator commands: /kick <name> [reason], /tp <name>, /say <message>, /op <name>, /deop [name], /save';
+const OP_COMMANDS = new Set(['ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save']);
 const NAMED_TIMES = { day: 0.02, sunrise: 0.98, morning: 0.05, noon: 0.25, sunset: 0.48, night: 0.55, midnight: 0.75 };
 
 const isInt = Number.isInteger;
@@ -57,6 +62,9 @@ export class GameServer {
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
     this.clients = new Set();
     this.byId = new Map(); // joined players
+    // Temporary operators: lower-case name -> { keyHash, until }. A grant survives a disconnect
+    // for a few minutes, but only a rejoin that presents the key given to that browser keeps it.
+    this.ops = new Map();
     this.nextId = 1;
     this.ticks = 0;
     this.log = log;
@@ -180,6 +188,8 @@ export class GameServer {
     if (!this.clients.delete(c)) return;
     clearTimeout(c.helloTimer);
     if (!c.id) return;
+    const grant = c.op && this.ops.get(c.name.toLowerCase());
+    if (grant) grant.until = Date.now() + (this.config.opGraceMs ?? OP_GRACE_MS);
     this.byId.delete(c.id);
     this.remember(c);
     this.broadcast({ t: 'leave', id: c.id, name: c.name });
@@ -258,6 +268,7 @@ export class GameServer {
     });
     this.broadcast({ t: 'join', id: c.id, name }, c);
     this.log(`${name} joined the game (${c.ip})`);
+    this.restoreOp(c, m.opKey);
   }
 
   // ------------------------------------------------------------ player messages
@@ -448,12 +459,121 @@ export class GameServer {
         return;
       case 'list':
       case 'who': {
-        const names = [...this.byId.values()].map((o) => o.name);
+        const names = [...this.byId.values()].map((o) => (o.op ? `*${o.name}` : o.name));
         return reply(`Online (${names.length}/${this.config.maxPlayers}): ${names.join(', ') || 'nobody'}`);
       }
       default:
+        if (OP_COMMANDS.has(cmd)) {
+          if (c && !c.op) return reply('You need to be an operator to do that.');
+          if (this.opCommand(c, cmd, args, reply)) {
+            if (c) this.log(`${c.name} ran /${cmd} ${args.join(' ')}`.trim());
+            return;
+          }
+        }
         return reply(`Unknown command /${cmd}. Try /help`);
     }
+  }
+
+  // ------------------------------------------------------------ operators
+
+  findOnline(name) {
+    const n = String(name || '').toLowerCase();
+    return [...this.byId.values()].find((o) => o.name.toLowerCase() === n) || null;
+  }
+
+  grantOp(c, by) {
+    const key = randomBytes(24).toString('base64url');
+    this.ops.set(c.name.toLowerCase(), { keyHash: sha256(key), until: null });
+    c.op = true;
+    this.send(c, { t: 'op', on: true, key });
+    this.send(c, { t: 'chat', m: 'You are now an operator. /ophelp lists the commands; /deop gives it up.' });
+    this.log(`${by} made ${c.name} an operator`);
+  }
+
+  revokeOp(name, by) {
+    const had = this.ops.delete(String(name).toLowerCase());
+    const c = this.findOnline(name);
+    if (c?.op) {
+      c.op = false;
+      this.send(c, { t: 'op', on: false });
+      this.send(c, { t: 'chat', m: 'You are no longer an operator.' });
+    }
+    if (had || c) this.log(`${by} removed operator status from ${c?.name || name}`);
+    return had;
+  }
+
+  // A rejoin keeps operator status only within the grace time and with the browser's key.
+  restoreOp(c, opKey) {
+    const name = c.name.toLowerCase();
+    const grant = this.ops.get(name);
+    if (!grant) return;
+    if (grant.until !== null && Date.now() > grant.until) {
+      this.ops.delete(name);
+      return;
+    }
+    const given = typeof opKey === 'string' ? sha256(opKey) : null;
+    if (!given || !timingSafeEqual(given, grant.keyHash)) {
+      this.ops.delete(name);
+      this.log(`${c.name} joined without the operator key: operator status removed`);
+      return;
+    }
+    grant.until = null;
+    c.op = true;
+    this.send(c, { t: 'op', on: true, key: opKey });
+    this.send(c, { t: 'chat', m: 'You are still an operator.' });
+  }
+
+  expireOps() {
+    const now = Date.now();
+    for (const [name, g] of this.ops) if (g.until !== null && now > g.until) this.ops.delete(name);
+  }
+
+  // Operator-only commands; returns true if `cmd` was one of them.
+  opCommand(c, cmd, args, reply) {
+    const by = c ? c.name : 'The console';
+    switch (cmd) {
+      case 'ophelp':
+        reply(OP_HELP);
+        return true;
+      case 'kick': {
+        const t = this.findOnline(args[0]);
+        if (!t) return reply(`No player called "${args[0] ?? ''}" is online`), true;
+        this.kick(t, args.slice(1).join(' ') || `Kicked by ${by}`);
+        this.announce(`${by} kicked ${t.name}`);
+        return true;
+      }
+      case 'tp': {
+        const t = this.findOnline(args[0]);
+        if (!c) return reply('Only players can teleport'), true;
+        if (!t || !t.pos) return reply(`No player called "${args[0] ?? ''}" is online`), true;
+        c.pos = [...t.pos];
+        this.send(c, { t: 'tp', p: c.pos });
+        this.log(`${by} teleported to ${t.name}`);
+        return true;
+      }
+      case 'say':
+        if (args.length) this.announce(`[${by}] ${args.join(' ')}`);
+        return true;
+      case 'op': {
+        const t = this.findOnline(args[0]);
+        if (!t) return reply(`No player called "${args[0] ?? ''}" is online`), true;
+        if (t.op) return reply(`${t.name} is already an operator`), true;
+        this.grantOp(t, by);
+        reply(`${t.name} is now an operator`);
+        return true;
+      }
+      case 'deop': {
+        const name = args[0] || c?.name;
+        if (!name) return reply('Usage: deop <name>'), true;
+        if (!this.revokeOp(name, by)) reply(`${name} is not an operator`);
+        else if (c && name.toLowerCase() !== c.name.toLowerCase()) reply(`${name} is no longer an operator`);
+        return true;
+      }
+      case 'save':
+        this.save().then(() => reply('World saved'));
+        return true;
+    }
+    return false;
   }
 
   announce(text) {
@@ -505,6 +625,7 @@ export class GameServer {
     const every = (s) => this.ticks % Math.round(TICK_RATE * s) === 0;
     if (every(10)) this.sendTime();
     if (every(15)) for (const c of this.clients) c.ws.ping();
+    if (every(10)) this.expireOps();
     if (every(30)) {
       const keep = new Set();
       for (const c of this.byId.values()) for (const k of c.subs) keep.add(k);
