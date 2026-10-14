@@ -868,6 +868,14 @@ const rsTorch = (t, on) => {
   t.set(8, 7, tip[3]);
 };
 Object.assign(PAINTERS, {
+  redstone_block: (t) => {
+    t.speckle([176, 22, 18], 0.22);
+    for (let i = 0; i < 14; i++) t.set(t.rnd(16), t.rnd(16), t.pick([[236, 52, 38], [120, 12, 12], [210, 36, 28]]));
+    for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+      t.mul(i, e, 0.85);
+      t.mul(e, i, 0.85);
+    }
+  },
   redstone_torch_on: (t) => rsTorch(t, true),
   redstone_torch_off: (t) => rsTorch(t, false),
   lamp_off: (t) => lamp(t, false),

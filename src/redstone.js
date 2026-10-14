@@ -9,6 +9,7 @@
 //  - A powered block ("charged") powers the dust, lamps, pistons and repeaters next to it.
 //  - Dust carries power 15 down to 1 along connected dust (also up and down a block), and
 //    powers lamps and pistons next to it or below it, and a repeater it sits behind.
+//  - A block of redstone always powers everything next to it.
 //  - A redstone torch is a power source that turns off while the block under it is powered.
 //  - A repeater passes power one way after 1-4 redstone ticks (0.1 s each).
 //  - Pistons push up to 12 blocks, sticky ones pull one back; they won't push into a player.
@@ -143,6 +144,7 @@ export class Redstone {
   // Does the neighbour at (mx, my, mz) push power into the non-dust cell (x, y, z)?
   feeds(mx, my, mz, x, y, z) {
     const id = this.get(mx, my, mz);
+    if (id === B.redstone_block) return true;
     const v = VARIANT[id];
     if (v) {
       if ((v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed)) return true;
@@ -177,6 +179,7 @@ export class Redstone {
       const [dx, dy, dz] = FACE_DIR[f];
       const mx = x + dx, my = y + dy, mz = z + dz;
       const id = this.get(mx, my, mz);
+      if (id === B.redstone_block) return 15;
       const v = VARIANT[id];
       if (v) {
         if ((v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed)) return 15;

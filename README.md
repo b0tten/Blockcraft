@@ -95,6 +95,7 @@ Redstone items are in the inventory (search "redstone", "lever", "piston"...). A
 - **Lever** (click to flip) and **stone button** (stays pressed for 1 second) can hang on a floor, ceiling or wall. They power things next to them and the block they hang on.
 - **Redstone dust** carries power along connected dust: 15 at the source, one less per block, up and down one-block steps too. It powers lamps and pistons beside or below it, and a repeater it sits behind.
 - **Repeater** passes power forward only and renders it back to full strength. Place it facing the way the signal should go; click it to set the delay (1-4 ticks of 0.1 s), shown by the moving torch.
+- **Block of redstone** is a passive power source: it powers dust, lamps, pistons and repeaters on every side, and can be pushed by pistons.
 - **Redstone torch** stands on a block (not on walls) and is a power source: it powers dust beside it and the block above it, and turns off while the block it stands on is powered, so it works as an inverter.
 - **Redstone lamp** lights up (and gives light) while powered.
 - **Piston** pushes up to 12 blocks, **sticky piston** also pulls one back. Plants, torches and other small blocks are broken instead of pushed; bedrock, obsidian and extended pistons can't be moved. A piston will not extend into a player. It points up or down when placed on a floor or ceiling, otherwise the way you face.

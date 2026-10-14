@@ -200,6 +200,7 @@ const OPPOSITE = [1, 0, 3, 2, 5, 4];
 
 const REDSTONE_ITEMS = [
   ['redstone_lamp', { name: 'Redstone Lamp', tex: 'lamp_off', sound: 'glass', hardness: 0.3, variant: { kind: 'lamp', on: false } }],
+  ['redstone_block', { name: 'Block of Redstone', tex: 'redstone_block', sound: 'stone', hardness: 5 }],
   ['redstone_dust', { ...ITEM, name: 'Redstone Dust', tex: 'dust_item', sound: 'stone' }],
   ['lever', { ...ITEM, name: 'Lever', tex: 'lever_item' }],
   ['stone_button', { ...ITEM, name: 'Stone Button', tex: 'button_item', sound: 'stone' }],
