@@ -2,7 +2,7 @@
 // results at once) and the server (which has the final say). `world` needs getBlock().
 
 import { WORLD_HEIGHT as H } from '../constants.js';
-import { B, SOLID, REPLACEABLE, NEEDS_SUPPORT, VARIANT, DECOR } from '../blocks.js';
+import { B, SOLID, REPLACEABLE, NEEDS_SUPPORT, VARIANT, DECOR, ATTACH, FACE_DIR } from '../blocks.js';
 
 // Facing (rot) -> horizontal direction: north, east, south, west.
 export const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -22,6 +22,9 @@ export function facingFromYaw(yaw) {
 
 // Clicked face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z) -> facing of something hung on that wall.
 const WALL_ROT = { 4: 0, 1: 1, 5: 2, 0: 3 };
+
+// Facing (rot) -> face index of the direction it points: north -Z, east +X, south +Z, west -X.
+const FACE_OF_ROT = [5, 0, 4, 1];
 
 const free = (w, x, y, z) => {
   if (y < 0 || y >= H) return false;
@@ -51,6 +54,25 @@ export function placeChanges(w, x, y, z, item, rot, face) {
       return face === 2 && solidBelow(w, x, y, z) ? [[x, y, z, DECOR.sign.stand[rot]]] : null;
     case B.flower_pot:
       return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.pot.empty]] : null;
+    case B.redstone_dust:
+      return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.dust[0]]] : null;
+    case B.redstone_torch:
+      return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.rstorch[1]]] : null;
+    case B.repeater:
+      return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.repeater[rot][0][0]]] : null;
+    case B.lever:
+    case B.stone_button: {
+      // Hangs on the face that was clicked: floor, ceiling or a wall.
+      const [dx, dy, dz] = FACE_DIR[face] || [0, 0, 0];
+      if (!SOLID[w.getBlock(x - dx, y - dy, z - dz)]) return null;
+      return [[x, y, z, (item === B.lever ? DECOR.lever : DECOR.button)[face][0]]];
+    }
+    case B.piston:
+    case B.sticky_piston: {
+      // Points up or down when put on a floor or ceiling, else the way the player faces.
+      const facing = face === 2 || face === 3 ? face : FACE_OF_ROT[rot];
+      return [[x, y, z, DECOR.piston[item === B.sticky_piston ? 1 : 0][facing][0]]];
+    }
   }
   if (NEEDS_SUPPORT[item]) {
     const below = w.getBlock(x, y - 1, z);
@@ -61,7 +83,7 @@ export function placeChanges(w, x, y, z, item, rot, face) {
 }
 
 // Blocks to write when the block at (x, y, z) is used (right-clicked) while holding `held`:
-// doors open and close, pots take and give back plants. Null if nothing happens.
+// doors open and close, levers flip, repeaters change delay, pots take and give back plants. Null if nothing happens.
 export function useChanges(w, x, y, z, held) {
   const v = VARIANT[w.getBlock(x, y, z)];
   if (!v) return null;
@@ -72,6 +94,10 @@ export function useChanges(w, x, y, z, held) {
     const open = v.open ? 0 : 1;
     return [[x, ly, z, DECOR.door.lower[open][lo.rot]], [x, ly + 1, z, DECOR.door.upper[open][up.rot]]];
   }
+  if (v.kind === 'repeater') return [[x, y, z, DECOR.repeater[v.rot][v.delay % 4][v.on ? 1 : 0]]]; // click to change the delay
+  if (v.kind === 'lever') return [[x, y, z, DECOR.lever[v.mount][v.on ? 0 : 1]]];
+  // A pressed button lets go by itself (the redstone simulation), so the click does nothing.
+  if (v.kind === 'button') return [[x, y, z, DECOR.button[v.mount][1]]];
   if (v.kind === 'pot') {
     const potted = DECOR.pot.byPlant.get(held);
     if (potted && v.plant !== held) return [[x, y, z, potted]];
@@ -84,7 +110,22 @@ export function useChanges(w, x, y, z, held) {
 // goes too. Returns that half's position, or null.
 export function linkedRemoval(w, old, id, x, y, z) {
   const v = VARIANT[old];
-  if (!v || (v.kind !== 'door' && v.kind !== 'bed') || VARIANT[id]?.kind === v.kind) return null;
+  if (!v) return null;
+  // Pistons: the head goes with an extended base; without its head the base is a plain piston again.
+  if (v.kind === 'piston' && v.extended) {
+    if (VARIANT[id]?.kind === 'piston') return null;
+    const [dx, dy, dz] = FACE_DIR[v.facing];
+    const h = VARIANT[w.getBlock(x + dx, y + dy, z + dz)];
+    return h?.kind === 'pistonHead' && h.facing === v.facing ? [x + dx, y + dy, z + dz, 0] : null;
+  }
+  if (v.kind === 'pistonHead') {
+    if (VARIANT[id]?.kind === 'pistonHead') return null;
+    const [dx, dy, dz] = FACE_DIR[v.facing];
+    const bx = x - dx, by = y - dy, bz = z - dz;
+    const b = VARIANT[w.getBlock(bx, by, bz)];
+    return b?.kind === 'piston' && b.extended && b.facing === v.facing ? [bx, by, bz, DECOR.piston[b.sticky ? 1 : 0][b.facing][0]] : null;
+  }
+  if ((v.kind !== 'door' && v.kind !== 'bed') || VARIANT[id]?.kind === v.kind) return null;
   let px = x, py = y, pz = z;
   if (v.kind === 'door') py += v.half === 'lower' ? 1 : -1;
   else {
@@ -108,5 +149,17 @@ export function cleanSignLines(lines) {
   if (!Array.isArray(lines)) return null;
   const out = [];
   for (let i = 0; i < 4; i++) out.push(typeof lines[i] === 'string' ? lines[i].replace(CONTROL, '').slice(0, MAX_SIGN_LINE) : '');
+  return out;
+}
+
+// Levers and buttons fall off when the block they hang on goes: called after (x, y, z) became
+// `id`, returns the attached blocks next to it that must be removed (or null).
+export function attachedLost(w, x, y, z, id) {
+  if (SOLID[id]) return null;
+  let out = null;
+  for (let f = 0; f < 6; f++) {
+    const nx = x + FACE_DIR[f][0], ny = y + FACE_DIR[f][1], nz = z + FACE_DIR[f][2];
+    if (ATTACH[w.getBlock(nx, ny, nz)] === (f ^ 1)) (out ||= []).push([nx, ny, nz, 0]);
+  }
   return out;
 }

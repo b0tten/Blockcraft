@@ -8,7 +8,7 @@ import { LightEngine } from './lighting.js';
 import { buildChunkMesh } from './mesher.js';
 import { TerrainGenerator, BIOME } from './generator.js';
 import { chunkCoords, editsFromArray, serializeEdits, deserializeEdits, signsFromArray, setSignIn, getSignIn } from './edits.js';
-import { linkedRemoval, isSign } from './rules.js';
+import { linkedRemoval, attachedLost, isSign } from './rules.js';
 
 export class World {
   // `remote` ({ request(cx, cz), drop(cx, cz) }) switches to multiplayer: a chunk's edits
@@ -180,6 +180,9 @@ export class World {
     // The other half of a door or bed goes with this one.
     const linked = linkedRemoval(this, old, id, x, y, z);
     if (linked) queue.push(linked);
+    const lost = attachedLost(this, x, y, z, id);
+    if (lost) queue.push(...lost);
+    this.onChange?.(x, y, z);
     if (id !== 0 && y > c.maxY) c.maxY = y;
     let m = this.edits.get(c.key);
     if (!m) this.edits.set(c.key, (m = new Map()));

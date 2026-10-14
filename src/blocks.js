@@ -8,6 +8,7 @@ export const R_CROSS = 4; // two crossed quads (flowers, grass)
 export const R_TORCH = 5; // small upright stick
 export const R_MODEL = 6; // box model (doors, beds, signs...), see the decoration blocks below
 export const R_ITEM = 7; // inventory item that places other blocks; never in the world
+export const R_DUST = 8; // redstone dust: flat wire whose shape depends on its neighbours (see the mesher)
 
 const WOOLS = [
   ['white', 'White'], ['light_gray', 'Light Gray'], ['gray', 'Gray'], ['black', 'Black'],
@@ -141,31 +142,163 @@ for (const plant of [null, ...POTTABLE]) {
   }]);
 }
 
+// ------------------------------------------------------------ redstone
+// Same idea as the decoration blocks: every state (on/off, power level, facing, extended) is
+// its own id, reached through an inventory item. world/redstone.js runs the circuits.
+// Faces are numbered +X, -X, +Y, -Y, +Z, -Z everywhere below.
+
+export const FACE_DIR = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+const WALL_FACE_ROT = { 4: 0, 1: 1, 5: 2, 0: 3 }; // outward face of a wall mount -> model rot
+const flipY = (b) => [b[0], 16 - b[4], b[2], b[3], 16 - b[1], b[5]];
+const OLD_CENTERS = [[16, 8, 8], [0, 8, 8], [8, 16, 8], [8, 0, 8], [8, 8, 16], [8, 8, 0]];
+const faceOfPoint = ([x, y, z]) => (x === 16 ? 0 : x === 0 ? 1 : y === 16 ? 2 : y === 0 ? 3 : z === 16 ? 4 : 5);
+// Turns a model built pointing up (+Y) to point out of face `f`: [point -> point] per face.
+const TURN_UP = [
+  (x, y, z) => [y, 16 - x, z],
+  (x, y, z) => [16 - y, x, z],
+  (x, y, z) => [x, y, z],
+  (x, y, z) => [x, 16 - y, 16 - z],
+  (x, y, z) => [x, 16 - z, y],
+  (x, y, z) => [x, z, 16 - y],
+];
+const pointBox = (T, b) => {
+  const a = T(b[0], b[1], b[2]), c = T(b[3], b[4], b[5]);
+  return [0, 1, 2].map((k) => Math.min(a[k], c[k])).concat([0, 1, 2].map((k) => Math.max(a[k], c[k])));
+};
+function pointUp(parts, f) {
+  const T = TURN_UP[f];
+  return parts.map((p) => {
+    const tex = Array(6);
+    OLD_CENTERS.forEach((c, fo) => (tex[faceOfPoint(T(...c))] = p.tex[fo]));
+    return { box: pointBox(T, p.box), tex };
+  });
+}
+
+const STONE = 'stone';
+const leverParts = (mount, on) => {
+  if (mount >= 2 && mount <= 3) {
+    // Floor lever; the ceiling one is the same upside down.
+    const base = [[5, 0, 4, 11, 3, 12]];
+    const stick = on ? [[7, 3, 6, 9, 7, 8], [7, 7, 4, 9, 11, 6]] : [[7, 3, 8, 9, 7, 10], [7, 7, 10, 9, 11, 12]];
+    const f = mount === 3 ? flipY : (b) => b;
+    return [...base.map((b) => box(f(b), 'cobblestone')), ...stick.map((b) => box(f(b), 'lever_handle'))];
+  }
+  const stick = on ? [[7, 7, 3, 9, 11, 5], [7, 11, 5, 9, 15, 7]] : [[7, 5, 3, 9, 9, 5], [7, 1, 5, 9, 5, 7]];
+  return [box([5, 4, 0, 11, 12, 3], 'cobblestone'), ...stick.map((b) => box(b, 'lever_handle'))];
+};
+const buttonParts = (mount, pressed) => {
+  const t = pressed ? 1 : 2;
+  if (mount >= 2 && mount <= 3) {
+    const b = [5, 0, 6, 11, t, 10];
+    return [box(mount === 3 ? flipY(b) : b, STONE)];
+  }
+  return [box([5, 6, 0, 11, 10, t], STONE)];
+};
+const mountRot = (mount) => (mount in WALL_FACE_ROT ? WALL_FACE_ROT[mount] : 0);
+// Face (0-5) the block hangs on, as seen from the block: opposite of where it sticks out.
+const OPPOSITE = [1, 0, 3, 2, 5, 4];
+
+const REDSTONE_ITEMS = [
+  ['redstone_lamp', { name: 'Redstone Lamp', tex: 'lamp_off', sound: 'glass', hardness: 0.3, variant: { kind: 'lamp', on: false } }],
+  ['redstone_block', { name: 'Block of Redstone', tex: 'redstone_block', sound: 'stone', hardness: 5 }],
+  ['redstone_dust', { ...ITEM, name: 'Redstone Dust', tex: 'dust_item', sound: 'stone' }],
+  ['lever', { ...ITEM, name: 'Lever', tex: 'lever_item' }],
+  ['stone_button', { ...ITEM, name: 'Stone Button', tex: 'button_item', sound: 'stone' }],
+  ['repeater', { ...ITEM, name: 'Repeater', tex: 'repeater_item', sound: 'stone' }],
+  ['piston', { ...ITEM, name: 'Piston', tex: 'piston_item', sound: 'stone' }],
+  ['sticky_piston', { ...ITEM, name: 'Sticky Piston', tex: 'sticky_piston_item', sound: 'stone' }],
+  ['redstone_torch', { ...ITEM, name: 'Redstone Torch', tex: 'redstone_torch_on' }],
+];
+DEFS.push(...REDSTONE_ITEMS);
+DEFS.push(['redstone_lamp_on', { name: 'Redstone Lamp', tex: 'lamp_on', emit: 15, inventory: false, item: 'redstone_lamp', drop: 'redstone_lamp', sound: 'glass', hardness: 0.3, variant: { kind: 'lamp', on: true } }]);
+for (let p = 0; p < 16; p++)
+  DEFS.push([`redstone_dust_${p}`, {
+    ...DEFAULTS, render: R_DUST, name: 'Redstone Dust', tex: `dust_${p}`, item: 'redstone_dust', support: true, hardness: 0, sound: 'stone',
+    select: [0, 0, 0, 1, 1 / 16, 1], variant: { kind: 'dust', power: p },
+  }]);
+for (let mount = 0; mount < 6; mount++)
+  for (const on of [false, true])
+    DEFS.push([`lever_${mount}_${on ? 'on' : 'off'}`, {
+      ...DEFAULTS, name: 'Lever', tex: 'cobblestone', item: 'lever', model: leverParts(mount, on), rot: mountRot(mount), sound: 'stone', hardness: 0.5,
+      attach: OPPOSITE[mount], variant: { kind: 'lever', mount, on },
+    }]);
+for (let mount = 0; mount < 6; mount++)
+  for (const pressed of [false, true])
+    DEFS.push([`stone_button_${mount}_${pressed ? 'on' : 'off'}`, {
+      ...DEFAULTS, name: 'Stone Button', tex: STONE, item: 'stone_button', model: buttonParts(mount, pressed), rot: mountRot(mount), sound: 'stone', hardness: 0.5,
+      attach: OPPOSITE[mount], variant: { kind: 'button', mount, pressed },
+    }]);
+// Redstone torch: stands upright on a block and turns off while that block is powered.
+for (const on of [true, false])
+  DEFS.push([`redstone_torch_${on ? 'on' : 'off'}`, {
+    name: 'Redstone Torch', tex: `redstone_torch_${on ? 'on' : 'off'}`, render: R_TORCH, solid: false, opaque: false, emit: on ? 7 : 0, support: true,
+    inventory: false, item: 'redstone_torch', drop: 'redstone_torch', sound: 'wood', hardness: 0, variant: { kind: 'rstorch', on },
+  }]);
+// Repeater: output towards north at rot 0. The moving torch sets the delay (1-4 redstone ticks).
+const repeaterParts = (delay, on) => {
+  const torch = on ? 'repeater_torch_on' : 'repeater_torch_off';
+  const c = 3 + (delay - 1) * 2;
+  return [
+    box([0, 0, 0, 16, 2, 16], ['stone', 'stone', on ? 'repeater_top_on' : 'repeater_top_off', 'stone', 'stone', 'stone']),
+    box([7, 2, 12, 9, 8, 14], torch),
+    box([7, 2, c - 1, 9, 8, c + 1], torch),
+  ];
+};
+for (const on of [false, true])
+  for (let delay = 1; delay <= 4; delay++)
+    for (let r = 0; r < 4; r++)
+      DEFS.push([`repeater_${on ? 'on' : 'off'}_${delay}_${r}`, {
+        ...DEFAULTS, name: 'Repeater', tex: 'stone', item: 'repeater', model: repeaterParts(delay, on), rot: r, sound: 'stone', hardness: 0,
+        collide: [[0, 0, 0, 16, 2, 16]], support: true, variant: { kind: 'repeater', rot: r, delay, on },
+      }]);
+// Pistons: the base is a full block; extended, a head block with a rod sits in front of it.
+const pistonBody = (sticky, extended) => [box([0, 0, 0, 16, 16, 16], ['piston_side', 'piston_side', extended ? 'piston_inner' : sticky ? 'piston_top_sticky' : 'piston_top', 'piston_bottom', 'piston_side', 'piston_side'])];
+const pistonHead = (sticky) => [
+  box([0, 12, 0, 16, 16, 16], ['piston_side', 'piston_side', sticky ? 'piston_top_sticky' : 'piston_top', 'piston_side', 'piston_side', 'piston_side']),
+  box([6, 0, 6, 10, 12, 10], 'piston_rod'),
+];
+for (const sticky of [false, true])
+  for (let f = 0; f < 6; f++)
+    for (const extended of [false, true])
+      DEFS.push([`${sticky ? 'sticky_' : ''}piston_${f}_${extended ? 'out' : 'in'}`, {
+        ...DEFAULTS, name: sticky ? 'Sticky Piston' : 'Piston', tex: 'piston_side', item: sticky ? 'sticky_piston' : 'piston', solid: true, opaque: false,
+        model: pointUp(pistonBody(sticky, extended), f), rot: 0, sound: 'stone', hardness: 1.5, variant: { kind: 'piston', sticky, facing: f, extended },
+      }]);
+for (const sticky of [false, true])
+  for (let f = 0; f < 6; f++)
+    DEFS.push([`${sticky ? 'sticky_' : ''}piston_head_${f}`, {
+      ...DEFAULTS, name: sticky ? 'Sticky Piston' : 'Piston', tex: 'piston_side', item: sticky ? 'sticky_piston' : 'piston', model: pointUp(pistonHead(sticky), f), rot: 0,
+      sound: 'stone', hardness: 1.5, collide: [[0, 12, 0, 16, 16, 16], [6, 0, 6, 10, 12, 10]].map((b) => pointBox(TURN_UP[f], b)).map((b) => b), variant: { kind: 'pistonHead', sticky, facing: f },
+    }]);
+
 export const WOOL_COLORS = WOOLS.map(([id]) => id);
 
+// Ids are 16-bit everywhere (chunks, tables); the tables below are sized with headroom.
+export const MAX_IDS = 1024;
 export const BLOCKS = [];
 export const B = {};
 
-export const OPAQUE = new Uint8Array(256);
-export const SOLID = new Uint8Array(256);
-export const RENDER = new Uint8Array(256);
-export const LIQUID = new Uint8Array(256);
-export const EMIT = new Uint8Array(256);
-export const FILTER = new Uint8Array(256);
-export const CULL_SELF = new Uint8Array(256);
-export const WAVE = new Uint8Array(256);
-export const REPLACEABLE = new Uint8Array(256);
-export const NEEDS_SUPPORT = new Uint8Array(256);
-export const CLIMB = new Uint8Array(256);
+export const OPAQUE = new Uint8Array(MAX_IDS);
+export const SOLID = new Uint8Array(MAX_IDS);
+export const RENDER = new Uint8Array(MAX_IDS);
+export const LIQUID = new Uint8Array(MAX_IDS);
+export const EMIT = new Uint8Array(MAX_IDS);
+export const FILTER = new Uint8Array(MAX_IDS);
+export const CULL_SELF = new Uint8Array(MAX_IDS);
+export const WAVE = new Uint8Array(MAX_IDS);
+export const REPLACEABLE = new Uint8Array(MAX_IDS);
+export const NEEDS_SUPPORT = new Uint8Array(MAX_IDS);
+export const CLIMB = new Uint8Array(MAX_IDS);
 // Shaped blocks: MODEL[id] = { parts, rot }; COLLIDE[id] / SELECT[id] = boxes in block units.
 export const MODEL = [];
 export const COLLIDE = [];
 export const SELECT = [];
 export const VARIANT = []; // id -> { kind: 'door' | 'ladder' | 'bed' | 'sign' | 'pot', ... }
-export const BLOCK_ITEM = new Uint8Array(256); // what you get when you pick the block
+export const ATTACH = new Int8Array(MAX_IDS).fill(-1); // face (0-5) a lever or button hangs on, else -1
+export const BLOCK_ITEM = new Uint16Array(MAX_IDS); // what you get when you pick the block
 export const FULL_BOX = [[0, 0, 0, 1, 1, 1]];
 // Texture layer per face (6 per block); filled in by resolveTextures().
-export const FACE_TEX = new Uint16Array(256 * 6);
+export const FACE_TEX = new Uint16Array(MAX_IDS * 6);
 
 DEFS.forEach(([key, def], id) => {
   const render = def.render ?? R_CUBE;
@@ -217,14 +350,17 @@ function rotateBox(b, rot) {
   return [Math.min(ax, bx) / 16, b[1] / 16, Math.min(az, bz) / 16, Math.max(ax, bx) / 16, b[4] / 16, Math.max(az, bz) / 16];
 }
 
-export const DECOR = { door: { lower: [[], []], upper: [[], []] }, ladder: [], bed: { foot: [], head: [] }, sign: { wall: [], stand: [] }, pot: { empty: 0, byPlant: new Map() } };
+export const DECOR = { door: { lower: [[], []], upper: [[], []] }, ladder: [], bed: { foot: [], head: [] }, sign: { wall: [], stand: [] }, pot: { empty: 0, byPlant: new Map() },
+  lamp: [0, 0], dust: [], lever: [], button: [], repeater: [], rstorch: [0, 0], piston: [[], []], pistonHead: [[], []] };
 DEFS.forEach(([, def], id) => {
   if (def.item) BLOCK_ITEM[id] = B[def.item];
+  if (def.attach !== undefined) ATTACH[id] = def.attach;
   if (def.collide) COLLIDE[id] = def.collide.map((b) => rotateBox(b, def.rot));
   if (def.model) {
     const boxes = def.model.map((p) => rotateBox(p.box || p.cross, def.rot));
     SELECT[id] = [0, 1, 2].map((k) => Math.min(...boxes.map((b) => b[k]))).concat([3, 4, 5].map((k) => Math.min(1, Math.max(...boxes.map((b) => b[k])))));
   }
+  if (def.select) SELECT[id] = def.select;
   const v = def.variant;
   if (!v) return;
   VARIANT[id] = { ...v, plant: v.plant ? B[v.plant] : 0 };
@@ -232,6 +368,14 @@ DEFS.forEach(([, def], id) => {
   else if (v.kind === 'ladder') DECOR.ladder[v.rot] = id;
   else if (v.kind === 'bed') DECOR.bed[v.part][v.rot] = id;
   else if (v.kind === 'sign') DECOR.sign[v.wall ? 'wall' : 'stand'][v.rot] = id;
+  else if (v.kind === 'lamp') DECOR.lamp[v.on ? 1 : 0] = id;
+  else if (v.kind === 'rstorch') DECOR.rstorch[v.on ? 1 : 0] = id;
+  else if (v.kind === 'dust') DECOR.dust[v.power] = id;
+  else if (v.kind === 'lever') (DECOR.lever[v.mount] ||= [])[v.on ? 1 : 0] = id;
+  else if (v.kind === 'button') (DECOR.button[v.mount] ||= [])[v.pressed ? 1 : 0] = id;
+  else if (v.kind === 'repeater') ((DECOR.repeater[v.rot] ||= [])[v.delay - 1] ||= [])[v.on ? 1 : 0] = id;
+  else if (v.kind === 'piston') (DECOR.piston[v.sticky ? 1 : 0][v.facing] ||= [])[v.extended ? 1 : 0] = id;
+  else if (v.kind === 'pistonHead') DECOR.pistonHead[v.sticky ? 1 : 0][v.facing] = id;
   else if (v.kind === 'pot') {
     if (v.plant) DECOR.pot.byPlant.set(B[v.plant], id);
     else DECOR.pot.empty = id;

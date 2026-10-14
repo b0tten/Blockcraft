@@ -2,7 +2,7 @@
 
 import { Noise, mulberry32, hash3i, hash3 } from '../noise.js';
 import { WORLD_HEIGHT as H, SEA_LEVEL as SEA, CHUNK_VOLUME, blockIndex } from '../constants.js';
-import { B } from '../blocks.js';
+import { B, MAX_IDS } from '../blocks.js';
 import { smoothstep, clamp } from '../math.js';
 
 export const BIOME = { OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, DESERT: 4, TAIGA: 5, SNOWY: 6, MOUNTAINS: 7, RIVER: 8 };
@@ -23,9 +23,9 @@ function spline(points, x) {
 }
 
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
-const CARVABLE = new Uint8Array(256);
+const CARVABLE = new Uint8Array(MAX_IDS);
 for (const id of [B.stone, B.dirt, B.grass, B.snowy_grass, B.sand, B.sandstone, B.gravel, B.coal_ore, B.iron_ore, B.clay]) CARVABLE[id] = 1;
-const PLANTS = new Uint8Array(256);
+const PLANTS = new Uint8Array(MAX_IDS);
 for (const id of [B.tall_grass, B.fern, B.dandelion, B.poppy, B.cornflower, B.dead_bush, B.red_mushroom, B.brown_mushroom, B.sugar_cane]) PLANTS[id] = 1;
 
 const CAVE_STEP = 4;
@@ -101,7 +101,7 @@ export class TerrainGenerator {
   }
 
   generate(cx, cz) {
-    const blocks = new Uint8Array(CHUNK_VOLUME);
+    const blocks = new Uint16Array(CHUNK_VOLUME);
     const heights = new Int16Array(256);
     const biomes = new Uint8Array(256);
     const temps = new Float32Array(256);

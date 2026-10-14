@@ -88,12 +88,27 @@ Current limits:
 - Movement is trusted from each player's browser, so flying and `/tp` work as in singleplayer.
 - Hotbars are kept in each player's browser.
 
+## Redstone
+
+Redstone items are in the inventory (search "redstone", "lever", "piston"...). A simplified version of the real thing:
+
+- **Lever** (click to flip) and **stone button** (stays pressed for 1 second) can hang on a floor, ceiling or wall. They power things next to them and the block they hang on.
+- **Redstone dust** carries power along connected dust: 15 at the source, one less per block, up and down one-block steps too. It powers lamps and pistons beside or below it, and a repeater it sits behind.
+- **Repeater** passes power forward only and renders it back to full strength. Place it facing the way the signal should go; click it to set the delay (1-4 ticks of 0.1 s), shown by the moving torch.
+- **Block of redstone** is a passive power source: it powers dust, lamps, pistons and repeaters on every side, and can be pushed by pistons.
+- **Redstone torch** stands on a block (not on walls) and is a power source: it powers dust beside it and the block above it, and turns off while the block it stands on is powered, so it works as an inverter.
+- **Redstone lamp** lights up (and gives light) while powered.
+- **Piston** pushes up to 12 blocks, **sticky piston** also pulls one back. Plants, torches and other small blocks are broken instead of pushed; bedrock, obsidian and extended pistons can't be moved. A piston will not extend into a player. It points up or down when placed on a floor or ceiling, otherwise the way you face.
+
+Not included: dust powering a block it points at, comparators, observers, locking repeaters, quasi-connectivity. In multiplayer the server runs the circuits; in singleplayer the browser does. A button that is mid-press when the world is saved stays pressed until you click it.
+
 ## Features
 
 - **Infinite procedural worlds** from a seed: continents and oceans, rivers, plains, forests, taiga, snowy tundra, deserts, beaches and 180-block mountains with snow caps
 - **Caves**, lava pools, and coal, iron, gold and diamond ores
 - **Trees** (oak, birch, spruce), cacti, sugar cane, flowers, grass and mushrooms
 - **80 block types**, including glass, TNT, glowstone, torches, bookshelves, 16 wool colours and ore blocks
+- **Redstone**: redstone lamps, torches, levers, buttons, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
 - **Decorations**: doors that open and close, climbable ladders, beds, signs you can write on, and flower pots for flowers, mushrooms and ferns
 - **Lighting**: flood-fill sky light and block light (torches, glowstone, lava), smooth lighting and ambient occlusion
 - **Day/night cycle** with sunsets, stars, a square sun and moon, and drifting clouds
@@ -158,6 +173,7 @@ src/
   player.js                movement and swept AABB collision
   raycast.js               voxel DDA for block picking
   fluids.js                flowing water and lava
+  redstone.js              redstone circuits and pistons (shared by singleplayer and the server)
   entities.js              primed TNT and explosions
   particles.js, hand.js    debris and smoke, first-person held block
   sky.js                   day/night colours and light levels
@@ -185,6 +201,7 @@ src/
 - Each vertex packs into 16 bytes (position, texture layer, UV, face, AO, sky and block light). All quads share one index buffer, and textures live in a `TEXTURE_2D_ARRAY` so mipmaps don't bleed.
 - Rendering is camera-relative, so precision holds far from the origin. Chunks are frustum-culled and drawn front-to-back; water is drawn back-to-front afterwards.
 - Saves store only the blocks you changed, keyed by chunk, and replay them on top of the regenerated terrain.
+- Redstone state (power level, on/off, extended, facing) is also in the block id, so circuits need no extra saved data. Block ids are 16-bit. `src/redstone.js` is shared by singleplayer and the server: it keeps only a dirty set and a few timers, recomputes a whole dust network from its sources when anything next to it changes, and writes the result back through `setBlocks`, so multiplayer clients just receive normal block changes.
 - Doors, beds, ladders, signs and pots are box models in 1/16-block units. Each facing, door half and open state is its own block id, so they need no extra per-block data; only sign text is stored separately. Players collide with each block's boxes (you can stand on a bed, and a closed door blocks only its panel).
 - Multiplayer never sends terrain. The browser and the server both generate it from the seed; when a player loads a chunk the server sends that chunk's edits, then streams every later change in order, so all players converge on the server's copy. The server runs the same generator, liquid and TNT code as the browser. Messages are JSON over WebSocket and are listed in `src/net/protocol.js`.
 - Other players' positions are stamped with the sender's clock and replayed 120 ms behind, so their movement stays smooth even when packets arrive unevenly.

@@ -12,7 +12,7 @@
 //   unsub  { c: [cx, cz, ...] }        stop receiving edits for these chunks
 //   set    { x, y, z, id, r, f }       break (id 0) or place an item; r = facing (0 north,
 //                                      1 east, 2 south, 3 west), f = clicked face (0-5)
-//   use    { x, y, z, id }             right-click a block (doors, flower pots) holding id
+//   use    { x, y, z, id }             right-click a block (doors, levers, buttons, repeaters, flower pots) holding id
 //   sign   { x, y, z, l: [4 lines] }   set the text of a sign
 //   ignite { x, y, z }                 light a TNT block
 //   swing  {}                          arm swing, shown to other players
@@ -34,10 +34,11 @@
 //   swing   { id }
 //   sign    { x, y, z, l }             someone changed a sign's text
 //   tp      { p: [x, y, z] }           move the player (e.g. back from the world border)
+//   (redstone needs no messages of its own: the server runs it and sends the resulting `blocks`)
 //   op      { on, key? }               you became (or stopped being) an operator; send key back
 //                                      as opKey when rejoining to keep it for a few minutes
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const DEFAULT_PORT = 8765;
 export const TICK_RATE = 20;
 export const REACH = 6;

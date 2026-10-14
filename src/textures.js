@@ -824,6 +824,136 @@ Object.assign(PAINTERS, {
   },
 });
 
+// ---------------------------------------------------------------- redstone
+const dustColor = (p) => (p === 0 ? [92, 18, 18] : [Math.round(130 + p * 8), Math.round(8 + p * 1.5), 8]);
+function dustTile(t, p) {
+  t.clear();
+  const c = dustColor(p);
+  const dot = (x, y) => t.set(x, y, scale(c, 0.9 + t.rand() * 0.2));
+  // Centre dot and four arms; the mesher shows only the arms that connect.
+  for (let y = 5; y <= 10; y++) for (let x = 5; x <= 10; x++) dot(x, y);
+  for (let a = 6; a <= 9; a++) for (let b = 0; b <= 4; b++) {
+    dot(a, b);
+    dot(a, 15 - b);
+    dot(b, a);
+    dot(15 - b, a);
+  }
+  for (let a = 0; a < 16; a++) for (const b of [6, 9]) if (p > 0 && t.rand() < 0.35) t.mul(a, b, 1.25);
+}
+const REDSTONE_RED = [190, 24, 20];
+function lamp(t, on) {
+  const base = on ? [255, 214, 120] : [112, 74, 44];
+  t.speckle(base, 0.1);
+  for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+    t.mul(i, e, on ? 0.9 : 0.85);
+    t.mul(e, i, on ? 0.9 : 0.85);
+  }
+  const cross = on ? [255, 244, 190] : [150, 100, 60];
+  for (let i = 2; i <= 13; i++) {
+    t.set(i, 8, scale(cross, 0.92));
+    t.set(8, i, scale(cross, 0.92));
+  }
+  for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11]]) t.set(x, y, scale(cross, on ? 1 : 0.8));
+}
+const rsTorch = (t, on) => {
+  t.clear();
+  for (let y = 8; y < 16; y++) {
+    t.set(7, y, [124, 92, 52]);
+    t.set(8, y, [96, 72, 40]);
+  }
+  const tip = on ? [[255, 150, 130], [250, 60, 40], [236, 40, 28], [200, 24, 20]] : [[120, 70, 64], [96, 52, 48], [86, 46, 42], [70, 38, 34]];
+  t.set(7, 6, tip[0]);
+  t.set(8, 6, tip[1]);
+  t.set(7, 7, tip[2]);
+  t.set(8, 7, tip[3]);
+};
+Object.assign(PAINTERS, {
+  redstone_block: (t) => {
+    t.speckle([176, 22, 18], 0.22);
+    for (let i = 0; i < 14; i++) t.set(t.rnd(16), t.rnd(16), t.pick([[236, 52, 38], [120, 12, 12], [210, 36, 28]]));
+    for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+      t.mul(i, e, 0.85);
+      t.mul(e, i, 0.85);
+    }
+  },
+  redstone_torch_on: (t) => rsTorch(t, true),
+  redstone_torch_off: (t) => rsTorch(t, false),
+  lamp_off: (t) => lamp(t, false),
+  lamp_on: (t) => lamp(t, true),
+  dust_item: (t) => {
+    t.clear();
+    for (const [x, y, r] of [[7, 7, 3], [5, 10, 2], [10, 9, 2], [8, 4, 2], [3, 6, 1], [12, 6, 1]])
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + 1) t.set(x + dx, y + dy, scale(REDSTONE_RED, 0.8 + t.rand() * 0.4));
+  },
+  lever_handle: (t) => planks(t, [150, 118, 70]),
+  lever_item: (t) => {
+    t.clear();
+    for (let y = 11; y <= 14; y++) for (let x = 4; x <= 11; x++) t.set(x, y, scale([122, 122, 122], y === 11 ? 1.15 : y === 14 ? 0.7 : 0.95 + t.rand() * 0.1));
+    for (let i = 0; i < 9; i++) {
+      t.set(8 + (i >> 1) - 1, 10 - i, scale(OAK, 0.8 + t.rand() * 0.2));
+      t.set(9 + (i >> 1) - 1, 10 - i, scale(OAK, 0.65));
+    }
+  },
+  button_item: (t) => {
+    t.clear();
+    for (let y = 6; y <= 10; y++) for (let x = 3; x <= 12; x++) t.set(x, y, scale([128, 128, 128], x === 3 || y === 6 ? 1.15 : x === 12 || y === 10 ? 0.7 : 0.95 + t.rand() * 0.1));
+  },
+  repeater_top_off: (t) => repeaterTop(t, false),
+  repeater_top_on: (t) => repeaterTop(t, true),
+  repeater_torch_off: (t) => t.speckle([70, 20, 18], 0.2),
+  repeater_torch_on: (t) => t.speckle([248, 60, 40], 0.25),
+  repeater_item: (t) => {
+    t.clear();
+    for (let y = 8; y <= 13; y++) for (let x = 1; x <= 14; x++) t.set(x, y, scale([150, 150, 150], y === 8 ? 1.12 : y === 13 ? 0.72 : 0.95 + t.rand() * 0.1));
+    for (const [x, y] of [[4, 5], [4, 6], [4, 7], [10, 5], [10, 6], [10, 7]]) t.set(x, y, scale([210, 40, 30], 0.9 + t.rand() * 0.2));
+  },
+  piston_side: (t) => {
+    planks(t, [176, 142, 88]);
+    for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+      t.mul(i, e, 0.78);
+      t.mul(e, i, 0.78);
+    }
+  },
+  piston_rod: (t) => planks(t, [150, 118, 70]),
+  piston_bottom: (t) => stone(t, [104, 104, 104]),
+  piston_inner: (t) => {
+    stone(t, [104, 104, 104]);
+    for (let y = 3; y <= 12; y++) for (let x = 3; x <= 12; x++) t.mul(x, y, 0.62);
+  },
+  piston_top: (t) => pistonFace(t, [176, 142, 88]),
+  piston_top_sticky: (t) => pistonFace(t, [110, 160, 70]),
+  piston_item: (t) => pistonIcon(t, false),
+  sticky_piston_item: (t) => pistonIcon(t, true),
+});
+function repeaterTop(t, on) {
+  t.speckle(on ? [168, 150, 150] : [140, 140, 140], 0.1);
+  for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+    t.mul(i, e, 0.85);
+    t.mul(e, i, 0.85);
+  }
+  const wire = on ? [240, 50, 40] : [96, 20, 20];
+  // Arrow towards the output (north, the top of the tile).
+  for (let y = 4; y <= 12; y++) t.set(8, y, wire);
+  for (let k = 1; k <= 3; k++) {
+    t.set(8 - k, 4 + k, wire);
+    t.set(8 + k, 4 + k, wire);
+  }
+}
+function pistonFace(t, color) {
+  planks(t, color);
+  for (let i = 0; i < 16; i++) for (const e of [0, 1, 14, 15]) {
+    t.mul(i, e, e === 0 || e === 15 ? 0.7 : 0.88);
+    t.mul(e, i, e === 0 || e === 15 ? 0.7 : 0.88);
+  }
+}
+function pistonIcon(t, sticky) {
+  t.clear();
+  for (let y = 6; y <= 13; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale([176, 142, 88], y === 6 ? 1.1 : y === 13 ? 0.7 : 0.95 + t.rand() * 0.08));
+  for (let y = 2; y <= 5; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale(sticky ? [110, 160, 70] : [176, 142, 88], y === 2 ? 1.12 : 0.88 + t.rand() * 0.08));
+  for (let y = 0; y <= 1; y++) for (let x = 7; x <= 8; x++) t.set(x, y, scale(OAK, 0.8));
+}
+for (let p = 0; p < 16; p++) PAINTERS[`dust_${p}`] = (t) => dustTile(t, p);
+
 // Give fully transparent pixels the average opaque color so mipmaps don't get dark fringes.
 function bleedTransparent(data) {
   let r = 0, g = 0, b = 0, n = 0;
