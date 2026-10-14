@@ -10,12 +10,13 @@
 //   u8  pad x2
 
 import { WORLD_HEIGHT as H, chunkKey } from '../constants.js';
-import { OPAQUE, RENDER, FACE_TEX, CULL_SELF, LIQUID, WAVE, R_NONE, R_TRANSLUCENT, R_CROSS, R_TORCH, R_MODEL, MODEL, ROT_FACE, rotateXZ } from '../blocks.js';
+import { OPAQUE, RENDER, FACE_TEX, CULL_SELF, LIQUID, WAVE, R_NONE, R_TRANSLUCENT, R_CROSS, R_TORCH, R_MODEL, R_DUST, MODEL, VARIANT, ROT_FACE, rotateXZ } from '../blocks.js';
+import { dustShape } from '../redstone.js';
 
 const PW = 18;
 const PA = PW * PW;
 const PH = H + 2;
-const pBlocks = new Uint8Array(PA * PH);
+const pBlocks = new Uint16Array(PA * PH);
 const pLight = new Uint8Array(PA * PH);
 
 const FLAG_WAVE_TOP = 1;
@@ -169,6 +170,9 @@ export function buildChunkMesh(world, chunk) {
           emitted = true;
         } else if (r === R_TORCH) {
           emitTorch(opaqueOut, x, y, z, b, pLight[pi]);
+          emitted = true;
+        } else if (r === R_DUST) {
+          emitDust(opaqueOut, x, y, z, b, pi);
           emitted = true;
         } else if (r === R_MODEL) {
           emitModel(opaqueOut, x, y, z, b, pLight[pi]);
@@ -335,6 +339,32 @@ function emitModel(out, x, y, z, b, light) {
         const [rx, rz] = rotateXZ(corner[0], corner[2], rot);
         out.vert(bx + rx, by + corner[1], bz + rz, part.layers[f], u, tv, rf, 3, sky, blk);
       }
+    }
+  }
+}
+
+// Redstone dust: a flat wire on the floor with an arm towards every connected side.
+const DUST_ARMS = [[11, 6, 16, 10], [0, 6, 5, 10], [6, 11, 10, 16], [6, 0, 10, 5]]; // [x0, z0, x1, z1] per HORIZ side
+const dustGet = (pi) => (dx, dy, dz) => pBlocks[pi + dx + dz * PW + dy * PA];
+function emitDust(out, x, y, z, b, pi) {
+  let mask = dustShape(dustGet(pi));
+  if (mask === 0) mask = 15;
+  else if ((mask & 3) && !(mask & 12)) mask |= 3;
+  else if ((mask & 12) && !(mask & 3)) mask |= 12;
+  const light = pLight[pi], power = VARIANT[b].power;
+  const sky = (light >> 4) * 17;
+  const blk = Math.max((light & 15) * 17, power ? (6 + (power >> 1)) * 17 : 0);
+  const layer = FACE_TEX[b * 6 + 2];
+  const bx = x * 16, by = y * 16, bz = z * 16;
+  const parts = [[5, 5, 11, 11]];
+  DUST_ARMS.forEach((a, i) => mask & (1 << i) && parts.push(a));
+  const verts = FACE_VERTS[2], uv = FACE_UV[2];
+  for (const [x0, z0, x1, z1] of parts) {
+    for (let v = 0; v < 4; v++) {
+      const c = verts[v];
+      const cx = c[0] ? x1 : x0, cz = c[2] ? z1 : z0;
+      const cu = uv.ua === 0 ? cx : cz, cv = uv.va === 0 ? cx : cz;
+      out.vert(bx + cx, by + (c[1] ? 1 : 0), bz + cz, layer, uv.uflip ? 16 - cu : cu, uv.vflip ? cv : 16 - cv, 2, 3, sky, blk);
     }
   }
 }

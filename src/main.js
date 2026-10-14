@@ -10,6 +10,7 @@ import { UI } from './ui.js';
 import { Sound } from './audio.js';
 import { Particles } from './particles.js';
 import { Fluids } from './fluids.js';
+import { Redstone } from './redstone.js';
 import { PrimedTNT, explode, explosionEffects } from './entities.js';
 import { Connection, serverURL } from './net/client.js';
 import { RemotePlayers, AVATAR_TEXTURES } from './net/players.js';
@@ -188,6 +189,11 @@ class Game {
     });
     this.world.setRenderDistance(this.settings.renderDistance);
     this.fluids = new Fluids(this.world);
+    this.redstone = new Redstone(this.world, (x, y, z, id) => {
+      const boxes = SOLID[id] ? FULL_BOX : COLLIDE[id];
+      return !!boxes && this.player.intersectsBoxes(boxes, x, y, z);
+    });
+    this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
     this.player = new Player();
     const p = this.player;
     if (data?.player) {
@@ -305,6 +311,7 @@ class Game {
     });
     this.world.setRenderDistance(this.settings.renderDistance);
     this.fluids = null; // the server runs liquids
+    this.redstone = null; // and redstone
     this.player = new Player();
     const p = this.player, sp = msg.spawn, you = msg.you;
     this.spawnPoint = { x: sp[0], y: sp[1], z: sp[2] };
@@ -663,6 +670,7 @@ class Game {
       this.playerSounds(events);
       if (this.dayCycle) this.time = (this.time + dt / DAY_LENGTH_SECONDS) % 1;
       this.fluids?.update(dt);
+      this.redstone?.update(dt);
       for (let i = this.entities.length - 1; i >= 0; i--) {
         const e = this.entities[i];
         if (e.update(dt, w)) {

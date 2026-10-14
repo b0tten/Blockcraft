@@ -5,7 +5,7 @@
 import { TerrainGenerator, BIOME } from '../src/world/generator.js';
 import { WORLD_HEIGHT as H, SEA_LEVEL, chunkKey } from '../src/constants.js';
 import { B, SOLID, LIQUID, NEEDS_SUPPORT } from '../src/blocks.js';
-import { linkedRemoval, isSign } from '../src/world/rules.js';
+import { linkedRemoval, attachedLost, isSign } from '../src/world/rules.js';
 import { setSignIn, getSignIn } from '../src/world/edits.js';
 
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
@@ -86,6 +86,9 @@ export class ServerWorld {
     if (isSign(old) && !isSign(id)) setSignIn(this.signs, x, y, z, null);
     const linked = linkedRemoval(this, old, id, x, y, z);
     if (linked) queue.push(linked);
+    const lost = attachedLost(this, x, y, z, id);
+    if (lost) queue.push(...lost);
+    this.onChange?.(x, y, z);
     let m = this.edits.get(c.key);
     if (!m) this.edits.set(c.key, (m = new Map()));
     m.set(i, id);

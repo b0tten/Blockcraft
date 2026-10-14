@@ -8,6 +8,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
 import { Fluids } from '../src/fluids.js';
+import { Redstone } from '../src/redstone.js';
 import { PrimedTNT, blast } from '../src/entities.js';
 import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
 import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
@@ -93,6 +94,8 @@ export class GameServer {
     this.world = new ServerWorld(seed, edits, signs);
     this.world.allow = (x, z) => this.inBorder(x, z);
     this.fluids = new Fluids(this.world);
+    this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null));
+    this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
     this.tnts = [];
     this.events = [];
   }
@@ -710,6 +713,7 @@ export class GameServer {
     w.clock += DT;
     if (this.meta.dayCycle) this.meta.time = (this.meta.time + DT / DAY_LENGTH_SECONDS) % 1;
     this.fluids.update(DT);
+    this.redstone.update(DT);
     for (let i = this.tnts.length - 1; i >= 0; i--) {
       const e = this.tnts[i];
       if (e.update(DT, w)) {
