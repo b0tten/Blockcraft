@@ -27,7 +27,7 @@ const HALF_W = 0.3;
 const HEIGHT = 1.8;
 const OP_GRACE_MS = 5 * 60 * 1000;
 const sha256 = (s) => createHash('sha256').update(String(s)).digest();
-const OP_HELP = 'Operator commands: /kick <name> [reason], /ban <name> [30m|2h|7d] [reason], /unban <name>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
+const OP_HELP = 'Operator commands: /kick <name> [reason], /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], /unban <name or word>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
 const OP_COMMANDS = new Set(['ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
 const BID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const DURATION = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
@@ -44,6 +44,11 @@ const formatSpan = (ms) => {
   for (const [u, n] of units) if (ms >= n * 0.98) return `${Math.round(ms / n)}${u}`;
   return `${Math.max(1, Math.round(ms / 1000))}s`;
 };
+// What a ban covers: a name, any name containing a word, the browser a player is using right
+// now, or the name plus every browser it has been used from (the default).
+export const BAN_TYPES = ['name', 'includes_name', 'browser', 'both'];
+const BAN_USAGE = 'Usage: /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason]';
+const MIN_BAN_WORD = 3;
 const banMessage = (e) => `You are banned from this server${e.until ? ` for another ${formatSpan(e.until - Date.now())}` : ''}${e.reason ? `: ${e.reason}` : '.'}`;
 const isNum = Number.isFinite;
 const round3 = (v) => Math.round(v * 1000) / 1000;
@@ -67,6 +72,31 @@ class Bucket {
   }
 }
 
+const banCovers = (e, key, hash) => {
+  if ((e.type === 'name' || e.type === 'both') && e.name.toLowerCase() === key) return true;
+  if (e.type === 'includes_name' && key.includes(e.word)) return true;
+  return (e.type === 'browser' || e.type === 'both') && !!hash && e.browsers.includes(hash);
+};
+const describeBan = (e) => `${e.type === 'includes_name' ? `*${e.word}*` : e.name} [${e.type}] (${e.until ? `${formatSpan(e.until - Date.now())} left` : 'permanent'})`;
+
+// bans.json: { list: { id: ban }, seen: { name: [browser hashes] } }. Files from before ban
+// types copied a ban onto every name a banned browser tried and every browser that then used
+// that name; only each original ban is kept, with the browsers its own name was seen on.
+export function migrateBans(saved) {
+  const seen = saved?.seen || {};
+  if (saved?.list) return { list: saved.list, seen };
+  const list = {};
+  for (const [key, e] of Object.entries(saved?.names || {})) {
+    if (!e || String(e.name).toLowerCase() !== key) continue;
+    const browsers = Object.entries(saved.browsers || {})
+      .filter(([h, b]) => b && String(b.name).toLowerCase() === key && (seen[key] || []).includes(h))
+      .map(([h]) => h);
+    const id = randomBytes(6).toString('hex');
+    list[id] = { id, type: 'both', name: e.name, by: e.by, reason: e.reason, until: e.until ?? null, at: e.at, browsers };
+  }
+  return { list, seen };
+}
+
 export class GameServer {
   constructor({ dir, meta, edits, signs, players, bans, config, log }) {
     this.dir = dir;
@@ -74,9 +104,9 @@ export class GameServer {
     this.meta = meta; // { name, seed, spawn, time, dayCycle, created }
     this.newWorld(meta.seed, edits, signs);
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
-    // Bans by name and by browser (hash of the browser's random ID); `seen` remembers which
-    // browsers each name used, so a ban can follow the player. Kept across world resets.
-    this.bans = { names: {}, browsers: {}, seen: {}, ...bans };
+    // Bans (see BAN_TYPES) and `seen`: which browsers (hashes of their random IDs) each name
+    // used, so a ban can cover them. Kept across world resets.
+    this.bans = migrateBans(bans);
     this.clients = new Set();
     this.byId = new Map(); // joined players
     // Temporary operators: lower-case name -> { keyHash, until }. A grant survives a disconnect
@@ -600,25 +630,27 @@ export class GameServer {
         this.save().then(() => reply('World saved'));
         return true;
       case 'ban': {
-        const name = args[0];
-        if (!name || !NAME_RE.test(name)) return reply('Usage: /ban <name> [30m|2h|7d] [reason]'), true;
-        if (c && name.toLowerCase() === c.name.toLowerCase()) return reply("You can't ban yourself"), true;
-        const ms = parseDuration(args[1]);
-        const reason = args.slice(ms ? 2 : 1).join(' ').slice(0, 100);
-        const known = this.ban(name, ms, reason, by);
-        if (!known && !this.findOnline(name)) reply(`Note: ${name} hasn't been seen here, so only the name is banned`);
+        const target = args[0];
+        if (!target || !NAME_RE.test(target)) return reply(BAN_USAGE), true;
+        let i = 1;
+        const type = BAN_TYPES.includes(args[1]?.toLowerCase()) ? args[i++].toLowerCase() : 'both';
+        const ms = parseDuration(args[i]);
+        if (ms) i++;
+        const reason = args.slice(i).join(' ').slice(0, 100);
+        const err = this.ban(target, type, ms, reason, by, c);
+        if (err) reply(err);
         return true;
       }
-      case 'unban':
-        if (!args[0]) return reply('Usage: /unban <name>'), true;
-        reply(this.unban(args[0]) ? `${args[0]} is no longer banned` : `${args[0]} is not banned`);
-        if (c) this.log(`${by} unbanned ${args[0]}`);
+      case 'unban': {
+        if (!args[0]) return reply('Usage: /unban <name or word>'), true;
+        const n = this.unban(args[0]);
+        reply(n ? `${args[0]} is no longer banned${n > 1 ? ` (${n} bans lifted)` : ''}` : `${args[0]} is not banned`);
+        if (n) this.log(`${by} unbanned ${args[0]}`);
         return true;
+      }
       case 'banlist': {
-        this.banFor('', '');
-        const list = Object.values(this.bans.names);
-        const uniq = [...new Map(list.map((e) => [e.name.toLowerCase(), e])).values()];
-        reply(uniq.length ? `Banned: ${uniq.map((e) => `${e.name} (${e.until ? `${formatSpan(e.until - Date.now())} left` : 'permanent'})`).join(', ')}` : 'Nobody is banned');
+        const list = this.activeBans();
+        reply(list.length ? `Banned: ${list.map(describeBan).join(', ')}` : 'Nobody is banned');
         return true;
       }
     }
@@ -634,49 +666,67 @@ export class GameServer {
     this.bans.seen[key] = list.slice(0, 8);
   }
 
-  // The ban that applies to this name or browser, if any. A banned browser under a new name
-  // bans that name too, so changing names doesn't help.
-  banFor(name, hash) {
+  activeBans() {
     const now = Date.now();
-    const live = (e) => e && (e.until === null || e.until > now);
-    for (const table of [this.bans.names, this.bans.browsers])
-      for (const [k, e] of Object.entries(table)) if (!live(e)) delete table[k];
-    const key = name.toLowerCase();
-    const ban = this.bans.names[key] || this.bans.browsers[hash];
-    if (ban && !this.bans.names[key]) this.bans.names[key] = { ...ban };
-    if (ban && !this.bans.browsers[hash]) this.bans.browsers[hash] = { ...ban };
-    return ban || null;
+    for (const [id, e] of Object.entries(this.bans.list)) if (e.until !== null && e.until <= now) delete this.bans.list[id];
+    return Object.values(this.bans.list);
   }
 
-  ban(name, ms, reason, by) {
+  // The ban that keeps this name or browser out, if any. Bans never spread: a banned browser
+  // is refused under any name, but that doesn't ban the name it tried (or anyone else).
+  banFor(name, hash) {
     const key = name.toLowerCase();
-    const online = this.findOnline(name);
-    const entry = { name: online?.name || this.saved[key]?.name || name, by, reason, until: ms ? Date.now() + ms : null, at: Date.now() };
-    this.bans.names[key] = entry;
-    const browsers = new Set(this.bans.seen[key] || []);
-    if (online?.browser) browsers.add(online.browser);
-    for (const h of browsers) this.bans.browsers[h] = entry;
-    if (online) {
-      this.revokeOp(online.name, by);
-      this.kick(online, banMessage(entry));
+    return this.activeBans().find((e) => banCovers(e, key, hash)) || null;
+  }
+
+  // Returns an error message, or null when the ban was made.
+  ban(target, type, ms, reason, by, issuer) {
+    const key = target.toLowerCase();
+    const me = issuer?.name.toLowerCase();
+    const online = this.findOnline(target);
+    const entry = { id: randomBytes(6).toString('hex'), type, name: online?.name || this.saved[key]?.name || target, by, reason, until: ms ? Date.now() + ms : null, at: Date.now() };
+    if (type === 'includes_name') {
+      if (key.length < MIN_BAN_WORD) return `The word must be at least ${MIN_BAN_WORD} characters`;
+      if (me?.includes(key)) return 'That word is in your own name';
+      entry.word = key;
+      entry.name = key;
+    } else if (key === me) return "You can't ban yourself";
+    if (type === 'browser') {
+      if (!online) return `${target} isn't online: a browser ban needs the player to be playing`;
+      if (issuer && online.browser === issuer.browser) return "That's your own browser";
+      entry.browsers = [online.browser];
+    } else if (type === 'both') {
+      const browsers = new Set(this.bans.seen[key] || []);
+      if (online) browsers.add(online.browser);
+      if (issuer) browsers.delete(issuer.browser);
+      entry.browsers = [...browsers];
     }
-    this.announce(`${by} banned ${entry.name}${ms ? ` for ${formatSpan(ms)}` : ''}${reason ? `: ${reason}` : ''}`);
+    this.bans.list[entry.id] = entry;
+    for (const o of [...this.byId.values()]) {
+      if (!banCovers(entry, o.name.toLowerCase(), o.browser)) continue;
+      this.revokeOp(o.name, by);
+      this.kick(o, banMessage(entry));
+    }
+    const what = type === 'includes_name' ? `every name containing "${key}"` : type === 'browser' ? `${entry.name}'s browser` : type === 'name' ? `the name ${entry.name}` : entry.name;
+    this.announce(`${by} banned ${what}${ms ? ` for ${formatSpan(ms)}` : ''}${reason ? `: ${reason}` : ''}`);
     this.save();
-    return browsers.size;
+    if (type === 'both' && !entry.browsers.length) return `Note: ${entry.name} hasn't been seen here, so only the name is banned`;
+    return null;
   }
 
-  unban(name) {
-    const key = name.toLowerCase();
+  // Lifts every ban made against this name (any type), or for this word. Returns how many.
+  unban(arg) {
+    const key = String(arg).toLowerCase();
     let n = 0;
-    for (const table of [this.bans.names, this.bans.browsers])
-      for (const [k, e] of Object.entries(table))
-        if (k === key || e.name.toLowerCase() === key) {
-          delete table[k];
-          n++;
-        }
+    for (const [id, e] of Object.entries(this.bans.list))
+      if (e.name.toLowerCase() === key || e.word === key) {
+        delete this.bans.list[id];
+        n++;
+      }
     if (n) this.save();
-    return n > 0;
+    return n;
   }
+
 
   announce(text) {
     this.broadcast({ t: 'chat', m: text });
