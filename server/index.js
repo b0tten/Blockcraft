@@ -38,8 +38,8 @@ Usage: node server/index.js [options]
   -h, --help          show this help
 
 Console commands: help, list, say <message>, kick <name> [reason], time set <time>,
-daycycle <on|off>, op <name>, deop <name>, ban <name> [30m|2h|7d] [reason],
-unban <name>, banlist, reset, cert, save, stop`;
+daycycle <on|off>, op <name>, deop <name>, ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason],
+unban <name or word>, banlist, reset, cert, save, stop`;
 
 const OPTIONS = {
     port: { type: 'string' },
@@ -279,7 +279,7 @@ createInterface({ input: process.stdin }).on('line', async (line) => {
     case '':
       return;
     case 'help':
-      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, op <name>, deop <name>, ban <name> [30m|2h|7d] [reason], unban <name>, banlist, reset, cert, save, stop');
+      return log('Commands: list, say <message>, kick <name> [reason], time set <time>, daycycle <on|off>, op <name>, deop <name>, ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], unban <name or word>, banlist, reset, cert, save, stop');
     case 'say':
       return args.length && game.announce(`[Server] ${args.join(' ')}`);
     case 'kick': {

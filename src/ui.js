@@ -8,6 +8,7 @@ const $ = (id) => document.getElementById(id);
 
 // Quick-command buttons above the chat box. With nothing (or just "/...") typed they offer
 // commands; tapping one types it, and once a command is typed its options appear.
+const BAN_QUICK = [['Name + browsers', 'both'], ['Name only', 'name'], ['Browser only', 'browser']];
 const QUICK = {
   '/time': [['Day', '/time set day'], ['Noon', '/time set noon'], ['Sunset', '/time set sunset'], ['Night', '/time set night'], ['Midnight', '/time set midnight']],
   '/daycycle': [['On', '/daycycle on'], ['Off', '/daycycle off']],
@@ -430,12 +431,15 @@ export class UI {
       // Operators also get player commands, with the online players as options.
       const names = g.remote ? g.remote.names() : [];
       quick['/kick'] = names.map((n) => [n, `/kick ${n}`]);
-      quick['/ban'] = names.map((n) => [n, `/ban ${n}`]);
+      // Pick a player, then what to ban (a word ban for includes_name is typed by hand).
+      quick['/ban'] = names.map((n) => [n, `/ban ${n}`, true]);
+      for (const n of names) quick[`/ban ${n.toLowerCase()}`] = BAN_QUICK.map(([label, type]) => [label, `/ban ${n} ${type}`]);
       quick['/tp'] = names.map((n) => [n, `/tp ${n}`]);
       quick['/deop'] = [['Give up operator', '/deop']];
     }
-    const typed = Object.keys(quick).find((cmd) => text === cmd || text.startsWith(`${cmd} `));
-    if (typed) for (const [label, cmd] of quick[typed]) add(label, { cmd });
+    // The longest command typed so far picks the buttons ("/ban bob" over "/ban").
+    const typed = Object.keys(quick).filter((cmd) => text === cmd || text.startsWith(`${cmd} `)).sort((a, b) => b.length - a.length)[0];
+    if (typed) for (const [label, cmd, fill] of quick[typed]) add(label, fill ? { fill: cmd } : { cmd });
     else if (text === '' || (text.startsWith('/') && !text.includes(' ')))
       for (const cmd of Object.keys(quick)) if (cmd.startsWith(text)) add(cmd, { fill: cmd });
     el.hidden = !el.children.length;
