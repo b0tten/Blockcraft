@@ -914,6 +914,13 @@ Object.assign(PAINTERS, {
       t.mul(e, i, 0.78);
     }
   },
+  piston_base_side: (t) => {
+    stone(t, [112, 112, 112]);
+    for (let i = 0; i < 16; i++) for (const e of [0, 15]) {
+      t.mul(i, e, 0.75);
+      t.mul(e, i, 0.75);
+    }
+  },
   piston_rod: (t) => planks(t, [150, 118, 70]),
   piston_bottom: (t) => stone(t, [104, 104, 104]),
   piston_inner: (t) => {
@@ -948,7 +955,7 @@ function pistonFace(t, color) {
 }
 function pistonIcon(t, sticky) {
   t.clear();
-  for (let y = 6; y <= 13; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale([176, 142, 88], y === 6 ? 1.1 : y === 13 ? 0.7 : 0.95 + t.rand() * 0.08));
+  for (let y = 6; y <= 13; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale([116, 116, 116], y === 6 ? 1.1 : y === 13 ? 0.7 : 0.9 + t.rand() * 0.18));
   for (let y = 2; y <= 5; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale(sticky ? [110, 160, 70] : [176, 142, 88], y === 2 ? 1.12 : 0.88 + t.rand() * 0.08));
   for (let y = 0; y <= 1; y++) for (let x = 7; x <= 8; x++) t.set(x, y, scale(OAK, 0.8));
 }

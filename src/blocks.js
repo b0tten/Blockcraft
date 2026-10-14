@@ -237,10 +237,11 @@ for (const on of [true, false])
 // Repeater: output towards north at rot 0. The moving torch sets the delay (1-4 redstone ticks).
 const repeaterParts = (delay, on) => {
   const torch = on ? 'repeater_torch_on' : 'repeater_torch_off';
-  const c = 3 + (delay - 1) * 2;
+  // The torch at the output stays put; the one at the input moves back 2 pixels per tick of delay.
+  const c = 5 + delay * 2;
   return [
     box([0, 0, 0, 16, 2, 16], ['stone', 'stone', on ? 'repeater_top_on' : 'repeater_top_off', 'stone', 'stone', 'stone']),
-    box([7, 2, 12, 9, 8, 14], torch),
+    box([7, 2, 2, 9, 8, 4], torch),
     box([7, 2, c - 1, 9, 8, c + 1], torch),
   ];
 };
@@ -252,7 +253,13 @@ for (const on of [false, true])
         collide: [[0, 0, 0, 16, 2, 16]], support: true, variant: { kind: 'repeater', rot: r, delay, on },
       }]);
 // Pistons: the base is a full block; extended, a head block with a rod sits in front of it.
-const pistonBody = (sticky, extended) => [box([0, 0, 0, 16, 16, 16], ['piston_side', 'piston_side', extended ? 'piston_inner' : sticky ? 'piston_top_sticky' : 'piston_top', 'piston_bottom', 'piston_side', 'piston_side'])];
+// Stone below, a wooden band at the pushing end, so you can tell which way it points.
+const pistonBody = (sticky, extended) => [
+  box([0, 0, 0, 16, 12, 16], ['piston_base_side', 'piston_base_side', 'piston_inner', 'piston_bottom', 'piston_base_side', 'piston_base_side']),
+  extended
+    ? box([6, 12, 6, 10, 16, 10], 'piston_rod')
+    : box([0, 12, 0, 16, 16, 16], ['piston_side', 'piston_side', sticky ? 'piston_top_sticky' : 'piston_top', 'piston_side', 'piston_side', 'piston_side']),
+];
 const pistonHead = (sticky) => [
   box([0, 12, 0, 16, 16, 16], ['piston_side', 'piston_side', sticky ? 'piston_top_sticky' : 'piston_top', 'piston_side', 'piston_side', 'piston_side']),
   box([6, 0, 6, 10, 12, 10], 'piston_rod'),
