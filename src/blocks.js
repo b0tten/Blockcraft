@@ -206,6 +206,7 @@ const REDSTONE_ITEMS = [
   ['repeater', { ...ITEM, name: 'Repeater', tex: 'repeater_item', sound: 'stone' }],
   ['piston', { ...ITEM, name: 'Piston', tex: 'piston_item', sound: 'stone' }],
   ['sticky_piston', { ...ITEM, name: 'Sticky Piston', tex: 'sticky_piston_item', sound: 'stone' }],
+  ['redstone_torch', { ...ITEM, name: 'Redstone Torch', tex: 'redstone_torch_on' }],
 ];
 DEFS.push(...REDSTONE_ITEMS);
 DEFS.push(['redstone_lamp_on', { name: 'Redstone Lamp', tex: 'lamp_on', emit: 15, inventory: false, item: 'redstone_lamp', drop: 'redstone_lamp', sound: 'glass', hardness: 0.3, variant: { kind: 'lamp', on: true } }]);
@@ -226,6 +227,12 @@ for (let mount = 0; mount < 6; mount++)
       ...DEFAULTS, name: 'Stone Button', tex: STONE, item: 'stone_button', model: buttonParts(mount, pressed), rot: mountRot(mount), sound: 'stone', hardness: 0.5,
       attach: OPPOSITE[mount], variant: { kind: 'button', mount, pressed },
     }]);
+// Redstone torch: stands upright on a block and turns off while that block is powered.
+for (const on of [true, false])
+  DEFS.push([`redstone_torch_${on ? 'on' : 'off'}`, {
+    name: 'Redstone Torch', tex: `redstone_torch_${on ? 'on' : 'off'}`, render: R_TORCH, solid: false, opaque: false, emit: on ? 7 : 0, support: true,
+    inventory: false, item: 'redstone_torch', drop: 'redstone_torch', sound: 'wood', hardness: 0, variant: { kind: 'rstorch', on },
+  }]);
 // Repeater: output towards north at rot 0. The moving torch sets the delay (1-4 redstone ticks).
 const repeaterParts = (delay, on) => {
   const torch = on ? 'repeater_torch_on' : 'repeater_torch_off';
@@ -343,7 +350,7 @@ function rotateBox(b, rot) {
 }
 
 export const DECOR = { door: { lower: [[], []], upper: [[], []] }, ladder: [], bed: { foot: [], head: [] }, sign: { wall: [], stand: [] }, pot: { empty: 0, byPlant: new Map() },
-  lamp: [0, 0], dust: [], lever: [], button: [], repeater: [], piston: [[], []], pistonHead: [[], []] };
+  lamp: [0, 0], dust: [], lever: [], button: [], repeater: [], rstorch: [0, 0], piston: [[], []], pistonHead: [[], []] };
 DEFS.forEach(([, def], id) => {
   if (def.item) BLOCK_ITEM[id] = B[def.item];
   if (def.attach !== undefined) ATTACH[id] = def.attach;
@@ -361,6 +368,7 @@ DEFS.forEach(([, def], id) => {
   else if (v.kind === 'bed') DECOR.bed[v.part][v.rot] = id;
   else if (v.kind === 'sign') DECOR.sign[v.wall ? 'wall' : 'stand'][v.rot] = id;
   else if (v.kind === 'lamp') DECOR.lamp[v.on ? 1 : 0] = id;
+  else if (v.kind === 'rstorch') DECOR.rstorch[v.on ? 1 : 0] = id;
   else if (v.kind === 'dust') DECOR.dust[v.power] = id;
   else if (v.kind === 'lever') (DECOR.lever[v.mount] ||= [])[v.on ? 1 : 0] = id;
   else if (v.kind === 'button') (DECOR.button[v.mount] ||= [])[v.pressed ? 1 : 0] = id;

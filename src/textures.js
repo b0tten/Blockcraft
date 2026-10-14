@@ -855,7 +855,21 @@ function lamp(t, on) {
   }
   for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11]]) t.set(x, y, scale(cross, on ? 1 : 0.8));
 }
+const rsTorch = (t, on) => {
+  t.clear();
+  for (let y = 8; y < 16; y++) {
+    t.set(7, y, [124, 92, 52]);
+    t.set(8, y, [96, 72, 40]);
+  }
+  const tip = on ? [[255, 150, 130], [250, 60, 40], [236, 40, 28], [200, 24, 20]] : [[120, 70, 64], [96, 52, 48], [86, 46, 42], [70, 38, 34]];
+  t.set(7, 6, tip[0]);
+  t.set(8, 6, tip[1]);
+  t.set(7, 7, tip[2]);
+  t.set(8, 7, tip[3]);
+};
 Object.assign(PAINTERS, {
+  redstone_torch_on: (t) => rsTorch(t, true),
+  redstone_torch_off: (t) => rsTorch(t, false),
   lamp_off: (t) => lamp(t, false),
   lamp_on: (t) => lamp(t, true),
   dust_item: (t) => {

@@ -56,6 +56,8 @@ export function placeChanges(w, x, y, z, item, rot, face) {
       return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.pot.empty]] : null;
     case B.redstone_dust:
       return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.dust[0]]] : null;
+    case B.redstone_torch:
+      return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.rstorch[1]]] : null;
     case B.repeater:
       return solidBelow(w, x, y, z) ? [[x, y, z, DECOR.repeater[rot][0][0]]] : null;
     case B.lever:

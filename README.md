@@ -95,6 +95,7 @@ Redstone items are in the inventory (search "redstone", "lever", "piston"...). A
 - **Lever** (click to flip) and **stone button** (stays pressed for 1 second) can hang on a floor, ceiling or wall. They power things next to them and the block they hang on.
 - **Redstone dust** carries power along connected dust: 15 at the source, one less per block, up and down one-block steps too. It powers lamps and pistons beside or below it, and a repeater it sits behind.
 - **Repeater** passes power forward only and renders it back to full strength. Place it facing the way the signal should go; click it to set the delay (1-4 ticks of 0.1 s), shown by the moving torch.
+- **Redstone torch** stands on a block (not on walls) and is a power source: it powers dust beside it and the block above it, and turns off while the block it stands on is powered, so it works as an inverter.
 - **Redstone lamp** lights up (and gives light) while powered.
 - **Piston** pushes up to 12 blocks, **sticky piston** also pulls one back. Plants, torches and other small blocks are broken instead of pushed; bedrock, obsidian and extended pistons can't be moved. A piston will not extend into a player. It points up or down when placed on a floor or ceiling, otherwise the way you face.
 
@@ -106,7 +107,7 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 - **Caves**, lava pools, and coal, iron, gold and diamond ores
 - **Trees** (oak, birch, spruce), cacti, sugar cane, flowers, grass and mushrooms
 - **80 block types**, including glass, TNT, glowstone, torches, bookshelves, 16 wool colours and ore blocks
-- **Redstone**: redstone lamps, levers, buttons, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
+- **Redstone**: redstone lamps, torches, levers, buttons, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
 - **Decorations**: doors that open and close, climbable ladders, beds, signs you can write on, and flower pots for flowers, mushrooms and ferns
 - **Lighting**: flood-fill sky light and block light (torches, glowstone, lava), smooth lighting and ambient occlusion
 - **Day/night cycle** with sunsets, stars, a square sun and moon, and drifting clouds

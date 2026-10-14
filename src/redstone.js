@@ -9,6 +9,7 @@
 //  - A powered block ("charged") powers the dust, lamps, pistons and repeaters next to it.
 //  - Dust carries power 15 down to 1 along connected dust (also up and down a block), and
 //    powers lamps and pistons next to it or below it, and a repeater it sits behind.
+//  - A redstone torch is a power source that turns off while the block under it is powered.
 //  - A repeater passes power one way after 1-4 redstone ticks (0.1 s each).
 //  - Pistons push up to 12 blocks, sticky ones pull one back; they won't push into a player.
 
@@ -134,7 +135,7 @@ export class Redstone {
       } else if (v.kind === 'repeater' && v.on) {
         const [rx, rz] = ROT_DIR[v.rot];
         if (mx + rx === x && mz + rz === z && my === y) return true;
-      }
+      } else if (v.kind === 'rstorch' && v.on && f === 3) return true; // the torch under this block
     }
     return false;
   }
@@ -150,6 +151,7 @@ export class Redstone {
         const [rx, rz] = ROT_DIR[v.rot];
         return my === y && mx + rx === x && mz + rz === z;
       }
+      if (v.kind === 'rstorch') return v.on && my <= y; // a lit torch powers what's above and beside it
       if (v.kind === 'dust') return v.power > 0 && my >= y; // dust powers what's beside or below it
     }
     return this.charged(mx, my, mz);
@@ -185,6 +187,10 @@ export class Redstone {
           }
           continue;
         }
+        if (v.kind === 'rstorch') {
+          if (v.on && my === y) return 15;
+          continue;
+        }
         if (v.kind === 'dust') continue;
       }
       if (this.charged(mx, my, mz)) return 15;
@@ -217,6 +223,9 @@ export class Redstone {
           break;
         case 'repeater':
           if (this.repeaterInput(x, y, z, v) !== v.on) this.schedule('repeater', x, y, z, v.delay);
+          break;
+        case 'rstorch':
+          if (!this.powered(x, y - 1, z, 2) !== v.on) this.schedule('torch', x, y, z, 1);
           break;
         case 'piston':
           if (this.powered(x, y, z, v.facing) !== v.extended) this.schedule('piston', x, y, z, 1);
@@ -286,7 +295,10 @@ export class Redstone {
       const v = VARIANT[id];
       if (!v) continue;
       if (t.kind === 'button' && v.kind === 'button' && v.pressed) this.world.setBlocks([[t.x, t.y, t.z, DECOR.button[v.mount][0]]]);
-      else if (t.kind === 'repeater' && v.kind === 'repeater') {
+      else if (t.kind === 'torch' && v.kind === 'rstorch') {
+        const on = !this.powered(t.x, t.y - 1, t.z, 2);
+        if (on !== v.on) this.world.setBlocks([[t.x, t.y, t.z, DECOR.rstorch[on ? 1 : 0]]]);
+      } else if (t.kind === 'repeater' && v.kind === 'repeater') {
         const input = this.repeaterInput(t.x, t.y, t.z, v);
         if (input !== v.on) this.world.setBlocks([[t.x, t.y, t.z, DECOR.repeater[v.rot][v.delay - 1][input ? 1 : 0]]]);
       } else if (t.kind === 'piston' && v.kind === 'piston') {
