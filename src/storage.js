@@ -1,5 +1,7 @@
 // Settings and world saves in localStorage.
 
+import { GEN_VERSION } from './constants.js';
+
 const PREFIX = 'blockcraft:';
 
 export const DEFAULT_SETTINGS = {
@@ -77,7 +79,7 @@ export function listWorlds() {
 
 export function createWorldMeta(name, seed) {
   const id = `w${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
-  const meta = { id, name, seed, created: Date.now(), lastPlayed: Date.now() };
+  const meta = { id, name, seed, gen: GEN_VERSION, created: Date.now(), lastPlayed: Date.now() };
   const list = read('worlds', []);
   list.push(meta);
   write('worlds', list);

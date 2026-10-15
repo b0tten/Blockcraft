@@ -17,6 +17,7 @@ import { GameServer } from './game.js';
 import { loadWorld } from './storage.js';
 import { parseSeed } from '../src/storage.js';
 import { DEFAULT_PORT, PROTOCOL_VERSION } from '../src/net/protocol.js';
+import { GEN_VERSION } from '../src/constants.js';
 
 const HELP = `Blockcraft dedicated server
 
@@ -107,7 +108,7 @@ let loaded = await loadWorld(dir);
 if (!loaded) {
   const seed = parseSeed(opt.seed ?? env.SEED ?? '');
   loaded = {
-    meta: { name: basename(dir), seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null },
+    meta: { name: basename(dir), seed, gen: GEN_VERSION, created: Date.now(), time: 0.03, dayCycle: true, spawn: null },
     edits: new Map(),
     players: {},
     bans: {},

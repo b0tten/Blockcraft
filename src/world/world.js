@@ -13,8 +13,9 @@ import { linkedRemoval, attachedLost, isSign } from './rules.js';
 export class World {
   // `remote` ({ request(cx, cz), drop(cx, cz) }) switches to multiplayer: a chunk's edits
   // come from the server, and a generated chunk waits until they have arrived.
-  constructor(seed, { edits, signs, onMeshed, onUnloaded, remote } = {}) {
+  constructor(seed, { gen = 1, edits, signs, onMeshed, onUnloaded, remote } = {}) {
     this.seed = seed | 0;
+    this.gen = gen; // terrain generator version (see generator.js)
     this.chunks = new Map();
     this.edits = edits || new Map(); // chunkKey -> Map(index -> block id)
     this.editsDirty = false;
@@ -25,7 +26,7 @@ export class World {
     this.editsReady = new Set(); // ... and whose edits have arrived
     this.held = new Map(); // generated chunks waiting for their edits
     this.light = new LightEngine(this);
-    this.generator = new TerrainGenerator(this.seed);
+    this.generator = new TerrainGenerator(this.seed, gen);
     this.renderDistance = 8;
     this.onMeshed = onMeshed || (() => {});
     this.onUnloaded = onUnloaded || (() => {});
@@ -243,7 +244,7 @@ export class World {
       w.job = key;
       this.pending.add(key);
       this.requestEdits(cx, cz, key);
-      w.postMessage({ seed: this.seed, cx, cz });
+      w.postMessage({ seed: this.seed, gen: this.gen, cx, cz });
     }
     if (this.useFallback) {
       for (let n = 0; n < 2; n++) {

@@ -4,6 +4,7 @@ import { Noise, mulberry32, hash3i, hash3 } from '../noise.js';
 import { WORLD_HEIGHT as H, SEA_LEVEL as SEA, CHUNK_VOLUME, blockIndex } from '../constants.js';
 import { B, MAX_IDS } from '../blocks.js';
 import { smoothstep, clamp } from '../math.js';
+import { Structures } from './structures.js';
 
 export const BIOME = { OCEAN: 0, BEACH: 1, PLAINS: 2, FOREST: 3, DESERT: 4, TAIGA: 5, SNOWY: 6, MOUNTAINS: 7, RIVER: 8 };
 export const BIOME_NAMES = ['Ocean', 'Beach', 'Plains', 'Forest', 'Desert', 'Taiga', 'Snowy Tundra', 'Mountains', 'River'];
@@ -30,9 +31,12 @@ for (const id of [B.tall_grass, B.fern, B.dandelion, B.poppy, B.cornflower, B.de
 
 const CAVE_STEP = 4;
 
+
 export class TerrainGenerator {
-  constructor(seed) {
+  constructor(seed, version = 1) {
     this.seed = seed | 0;
+    this.version = version;
+    this.structures = version >= 2 ? new Structures(this) : null;
     const s = this.seed;
     this.nCont = new Noise(s ^ 0x1a2b3c);
     this.nHills = new Noise(s ^ 0x2b3c4d);
@@ -225,6 +229,7 @@ export class TerrainGenerator {
 
     this.placeOres(cx, cz, blocks);
     this.placePlants(cx, cz, blocks, heights, biomes);
+    this.structures?.apply(cx, cz, blocks);
     this.placeTrees(cx, cz, blocks);
 
     return { blocks, heights, biomes };
@@ -332,6 +337,7 @@ export class TerrainGenerator {
           const wx = ncx * 16 + lx, wz = ncz * 16 + lz;
           // Cheap reject: only evaluate the column if the roll could pass for the densest biome.
           if (roll > 0.8) continue;
+          if (this.structures?.occupied(wx, wz)) continue; // no trees through houses
           this.column(wx, wz, col);
           if (col.h < SEA || col.h > H - 20 || col.river > 0.25) continue;
           let density = 0, kind = 'oak';

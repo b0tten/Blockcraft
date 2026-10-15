@@ -12,7 +12,7 @@ import { Redstone } from '../src/redstone.js';
 import { PrimedTNT, blast } from '../src/entities.js';
 import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
 import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
-import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, chunkKey } from '../src/constants.js';
+import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, GEN_VERSION, chunkKey } from '../src/constants.js';
 import { editsToArray, signsToArray } from '../src/world/edits.js';
 import { timeLabel } from '../src/sky.js';
 import { clamp } from '../src/math.js';
@@ -121,7 +121,7 @@ export class GameServer {
   }
 
   newWorld(seed, edits, signs) {
-    this.world = new ServerWorld(seed, edits, signs);
+    this.world = new ServerWorld(seed, edits, signs, this.meta.gen ?? 1);
     this.world.allow = (x, z) => this.inBorder(x, z);
     this.fluids = new Fluids(this.world);
     this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null));
@@ -162,7 +162,7 @@ export class GameServer {
     this.resetting = true;
     for (const c of [...this.clients]) this.kick(c, 'The world is being reset. Join again in a moment!');
     const seed = this.config.seed ?? Math.floor(Math.random() * 2147483647);
-    this.meta = { ...this.meta, seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
+    this.meta = { ...this.meta, seed, gen: GEN_VERSION, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
     this.newWorld(seed, new Map(), new Map());
     this.saved = {};
     this.meta.spawn = this.world.findSpawn();
@@ -317,6 +317,7 @@ export class GameServer {
       server: this.config.name,
       motd: this.config.motd,
       seed: this.meta.seed,
+      gen: this.meta.gen ?? 1,
       time: this.meta.time,
       cycle: this.meta.dayCycle,
       spawn: this.meta.spawn,

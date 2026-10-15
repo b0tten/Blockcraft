@@ -11,6 +11,7 @@ import { Sound } from './audio.js';
 import { Particles } from './particles.js';
 import { Fluids } from './fluids.js';
 import { Redstone } from './redstone.js';
+import { STRUCTURE_KINDS } from './world/structures.js';
 import { PrimedTNT, explode, explosionEffects } from './entities.js';
 import { Connection, serverURL } from './net/client.js';
 import { RemotePlayers, AVATAR_TEXTURES } from './net/players.js';
@@ -25,7 +26,7 @@ import { placeChanges, useChanges, facingFromYaw, isSign, cleanSignLines } from 
 import { serializeSigns, deserializeSigns } from './world/edits.js';
 import { SignText } from './render/signs.js';
 import { forwardVector, clamp } from './math.js';
-import { DAY_LENGTH_SECONDS, WORLD_HEIGHT } from './constants.js';
+import { DAY_LENGTH_SECONDS, WORLD_HEIGHT, GEN_VERSION } from './constants.js';
 import * as store from './storage.js';
 
 const DEFAULT_HOTBAR = [B.grass, B.dirt, B.stone, B.cobblestone, B.oak_planks, B.oak_log, B.glass, B.torch, B.tnt];
@@ -111,6 +112,7 @@ class Game {
     if (this.pano || !this.renderer) return;
     const renderer = this.renderer;
     const world = new World(PANORAMA_SEED, {
+      gen: GEN_VERSION,
       onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
       onUnloaded: (c) => renderer.deleteChunk(c),
     });
@@ -182,6 +184,7 @@ class Game {
     const data = store.loadWorldData(meta.id);
     const renderer = this.renderer;
     this.world = new World(meta.seed, {
+      gen: meta.gen ?? 1, // worlds from before structures keep their original terrain
       edits: World.deserializeEdits(data?.edits),
       signs: deserializeSigns(data?.signs),
       onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
@@ -305,6 +308,7 @@ class Game {
     this.welcome = msg;
     const renderer = this.renderer;
     this.world = new World(msg.seed, {
+      gen: msg.gen ?? 1,
       onMeshed: (c, mesh) => renderer.uploadChunk(c, mesh),
       onUnloaded: (c) => renderer.deleteChunk(c),
       remote: { request: (cx, cz) => conn.subscribe(cx, cz), drop: (cx, cz) => conn.unsubscribe(cx, cz) },
@@ -1017,7 +1021,7 @@ class Game {
     switch (cmd) {
       case 'help':
         log(
-          'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /rd <2-16>, /give <block>' +
+          'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /locate <village|pyramid|well>, /rd <2-16>, /give <block>' +
             (this.net ? ', /list' : '') +
             (this.isOp ? '. Operator commands: /ophelp' : ''),
         );
@@ -1061,6 +1065,18 @@ class Game {
       case 'seed':
         log(`Seed: ${this.world.seed}`);
         break;
+      case 'locate': {
+        const kind = (args[0] || '').toLowerCase();
+        const st = this.world.generator.structures;
+        if (!STRUCTURE_KINDS.includes(kind)) log(`Usage: /locate <${STRUCTURE_KINDS.join('|')}>`);
+        else if (!st) log('This world was made before structures existed, so it has none');
+        else {
+          const f = st.find(kind, p.pos[0], p.pos[2]);
+          if (f) log(`Nearest ${kind}: ${f.x} ${f.y + 1} ${f.z} (${Math.round(Math.hypot(f.x - p.pos[0], f.z - p.pos[2]))} blocks away)`);
+          else log(`No ${kind} nearby`);
+        }
+        break;
+      }
       case 'rd':
       case 'renderdistance': {
         const n = clamp(Math.round(Number(args[0])), 2, 16);

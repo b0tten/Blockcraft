@@ -12,9 +12,9 @@ const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
 
 export class ServerWorld {
-  constructor(seed, edits = new Map(), signs = new Map()) {
+  constructor(seed, edits = new Map(), signs = new Map(), gen = 1) {
     this.seed = seed | 0;
-    this.generator = new TerrainGenerator(this.seed);
+    this.generator = new TerrainGenerator(this.seed, gen);
     this.edits = edits; // chunkKey -> Map(index -> id): the persistent part of the world
     this.signs = signs; // chunkKey -> Map(index -> [four lines])
     this.chunks = new Map(); // chunkKey -> { blocks, used }: a cache, rebuilt when needed
