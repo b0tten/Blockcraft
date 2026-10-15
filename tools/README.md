@@ -10,6 +10,7 @@ npm start                     # serves the repository on http://localhost:8080
 | Tool | What it's for |
 | --- | --- |
 | [`textures.html`](textures.html) | Every texture as the game paints it, mob previews (front, side, top), live reload while you edit `src/textures.js`, and a pixel editor that exports code you can paste back. `textures.html?t=cow_face` opens one texture straight away. |
+| [`structures.html`](structures.html) | Villages, pyramids and wells for any seed, layer by layer or from above. Shows block names and coordinates relative to the structure, and rebuilds when `src/world/structures.js` changes. How structures are stored and edited: [structures.md](structures.md). |
 | [`sounds.html`](sounds.html) | A button for every sound effect, re-read from `src/audio.js` on each click; a scratch pad for trying synth parameters; an oscilloscope; "repeat every n seconds" for tweaking. |
 
 The game itself still paints its textures and builds its sounds once at start-up, so reload the game tab (F5) to see a change in the game.

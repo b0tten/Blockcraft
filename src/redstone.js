@@ -5,12 +5,13 @@
 // simulation keeps no per-block data except pending timers, and saves need nothing extra.
 //
 // Simplified rules (documented in the README):
-//  - Levers (on) and pressed buttons power everything next to them and the block they hang on.
+//  - Levers (on), pressed buttons and pressure plates with someone on them power everything next to them and the block they hang on.
 //  - A powered block ("charged") powers the dust, lamps, pistons and repeaters next to it.
 //  - Dust carries power 15 down to 1 along connected dust (also up and down a block), and
 //    powers lamps and pistons next to it or below it, and a repeater it sits behind.
 //  - A block of redstone always powers everything next to it.
 //  - A redstone torch is a power source that turns off while the block under it is powered.
+//  - TNT next to power (or on a powered block) is lit.
 //  - A repeater passes power one way after 1-4 redstone ticks (0.1 s each).
 //  - Pistons push up to 12 blocks, sticky ones pull one back; they won't push into a player.
 
@@ -29,6 +30,9 @@ const HORIZ = [[1, 0], [-1, 0], [0, 1], [0, -1]]; // +X -X +Z -Z
 const ROT_DIR = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 
 const kindOf = (id) => VARIANT[id]?.kind;
+// Levers that are on, pressed buttons and pressure plates someone stands on.
+const isSource = (v) => (v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed) || (v.kind === 'plate' && v.on);
+const PLATE_TICKS = 5; // a plate re-checks whether anyone is still on it this often
 
 // Which horizontal sides of the dust at (0,0,0) connect, by what `get(dx, dy, dz)` returns:
 // a bit per side of HORIZ for wire to draw. `links` (optional) receives [dx, dy, dz] of the
@@ -68,10 +72,14 @@ export function dustShape(get, links) {
 
 export class Redstone {
   // `world` needs getBlock() and setBlocks(); `blocked(x, y, z, id)` says whether a player or
-  // entity is in the way of that block (pistons won't squash anyone).
-  constructor(world, blocked = () => false) {
+  // entity is in the way of that block (pistons won't squash anyone). Hooks:
+  // `occupied(x, y, z)`: is anyone standing in that block (for pressure plates)?
+  // `ignite(x, y, z)`: light the TNT block there (remove it, spawn primed TNT).
+  constructor(world, blocked = () => false, { occupied = () => false, ignite = null } = {}) {
     this.world = world;
     this.blocked = blocked;
+    this.occupied = occupied;
+    this.ignite = ignite;
     this.dirty = new Map();
     this.timers = new Map(); // "kind,x,y,z" -> { at, kind, x, y, z }
     this.acc = 0;
@@ -105,6 +113,15 @@ export class Redstone {
     if (this.acc > TICK) this.acc = 0;
   }
 
+  // Something stands with its feet in block (x, y, z): press the pressure plate there, if any.
+  // Hosts call this every tick for players and mobs.
+  stepOn(x, y, z) {
+    const v = VARIANT[this.get(x, y, z)];
+    if (v?.kind !== 'plate') return;
+    if (!v.on) this.world.setBlocks([[x, y, z, DECOR.plate[v.wood ? 1 : 0][1]]]);
+    this.schedule('plate', x, y, z, PLATE_TICKS);
+  }
+
   clear() {
     this.dirty.clear();
     this.timers.clear();
@@ -130,7 +147,7 @@ export class Redstone {
       const id = this.get(mx, my, mz);
       const v = VARIANT[id];
       if (!v) continue;
-      if ((v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed)) {
+      if (isSource(v)) {
         const a = FACE_DIR[ATTACH[id]];
         if (mx + a[0] === x && my + a[1] === y && mz + a[2] === z) return true;
       } else if (v.kind === 'repeater' && v.on) {
@@ -147,7 +164,7 @@ export class Redstone {
     if (id === B.redstone_block) return true;
     const v = VARIANT[id];
     if (v) {
-      if ((v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed)) return true;
+      if (isSource(v)) return true;
       if (v.kind === 'repeater') {
         if (!v.on) return false;
         const [rx, rz] = ROT_DIR[v.rot];
@@ -182,7 +199,7 @@ export class Redstone {
       if (id === B.redstone_block) return 15;
       const v = VARIANT[id];
       if (v) {
-        if ((v.kind === 'lever' && v.on) || (v.kind === 'button' && v.pressed)) return 15;
+        if (isSource(v)) return 15;
         if (v.kind === 'repeater') {
           if (v.on) {
             const [rx, rz] = ROT_DIR[v.rot];
@@ -210,6 +227,10 @@ export class Redstone {
     const seen = new Set();
     for (const [x, y, z] of cells) {
       const id = this.get(x, y, z);
+      if (id === B.tnt) {
+        if (this.ignite && this.powered(x, y, z)) this.ignite(x, y, z);
+        continue;
+      }
       const v = VARIANT[id];
       if (!v) continue;
       switch (v.kind) {
@@ -298,7 +319,10 @@ export class Redstone {
       const v = VARIANT[id];
       if (!v) continue;
       if (t.kind === 'button' && v.kind === 'button' && v.pressed) this.world.setBlocks([[t.x, t.y, t.z, DECOR.button[v.mount][0]]]);
-      else if (t.kind === 'torch' && v.kind === 'rstorch') {
+      else if (t.kind === 'plate' && v.kind === 'plate' && v.on) {
+        if (this.occupied(t.x, t.y, t.z)) this.schedule('plate', t.x, t.y, t.z, PLATE_TICKS);
+        else this.world.setBlocks([[t.x, t.y, t.z, DECOR.plate[v.wood ? 1 : 0][0]]]);
+      } else if (t.kind === 'torch' && v.kind === 'rstorch') {
         const on = !this.powered(t.x, t.y - 1, t.z, 2);
         if (on !== v.on) this.world.setBlocks([[t.x, t.y, t.z, DECOR.rstorch[on ? 1 : 0]]]);
       } else if (t.kind === 'repeater' && v.kind === 'repeater') {

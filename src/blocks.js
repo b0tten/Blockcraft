@@ -278,6 +278,19 @@ for (const sticky of [false, true])
       sound: 'stone', hardness: 1.5, collide: [[0, 12, 0, 16, 16, 16], [6, 0, 6, 10, 12, 10]].map((b) => pointBox(TURN_UP[f], b)).map((b) => b), variant: { kind: 'pistonHead', sticky, facing: f },
     }]);
 
+// Pressure plates (appended last: ids are stored in saves). Power while someone stands on them.
+DEFS.push(
+  ['stone_pressure_plate', { ...ITEM, name: 'Stone Pressure Plate', tex: 'stone_plate_item', sound: 'stone' }],
+  ['oak_pressure_plate', { ...ITEM, name: 'Oak Pressure Plate', tex: 'oak_plate_item' }],
+);
+for (const wood of [false, true])
+  for (const on of [false, true])
+    DEFS.push([`${wood ? 'oak' : 'stone'}_pressure_plate_${on ? 'on' : 'off'}`, {
+      ...DEFAULTS, name: wood ? 'Oak Pressure Plate' : 'Stone Pressure Plate', tex: wood ? PL : 'stone', item: wood ? 'oak_pressure_plate' : 'stone_pressure_plate',
+      model: [box([1, 0, 1, 15, on ? 0.5 : 1, 15], wood ? PL : 'stone')], rot: 0, attach: 3, sound: wood ? 'wood' : 'stone', hardness: 0.5,
+      variant: { kind: 'plate', wood, on },
+    }]);
+
 export const WOOL_COLORS = WOOLS.map(([id]) => id);
 
 // Ids are 16-bit everywhere (chunks, tables); the tables below are sized with headroom.
@@ -358,7 +371,7 @@ function rotateBox(b, rot) {
 }
 
 export const DECOR = { door: { lower: [[], []], upper: [[], []] }, ladder: [], bed: { foot: [], head: [] }, sign: { wall: [], stand: [] }, pot: { empty: 0, byPlant: new Map() },
-  lamp: [0, 0], dust: [], lever: [], button: [], repeater: [], rstorch: [0, 0], piston: [[], []], pistonHead: [[], []] };
+  lamp: [0, 0], dust: [], lever: [], button: [], repeater: [], rstorch: [0, 0], plate: [[0, 0], [0, 0]], piston: [[], []], pistonHead: [[], []] };
 DEFS.forEach(([, def], id) => {
   if (def.item) BLOCK_ITEM[id] = B[def.item];
   if (def.attach !== undefined) ATTACH[id] = def.attach;
@@ -377,6 +390,7 @@ DEFS.forEach(([, def], id) => {
   else if (v.kind === 'sign') DECOR.sign[v.wall ? 'wall' : 'stand'][v.rot] = id;
   else if (v.kind === 'lamp') DECOR.lamp[v.on ? 1 : 0] = id;
   else if (v.kind === 'rstorch') DECOR.rstorch[v.on ? 1 : 0] = id;
+  else if (v.kind === 'plate') DECOR.plate[v.wood ? 1 : 0][v.on ? 1 : 0] = id;
   else if (v.kind === 'dust') DECOR.dust[v.power] = id;
   else if (v.kind === 'lever') (DECOR.lever[v.mount] ||= [])[v.on ? 1 : 0] = id;
   else if (v.kind === 'button') (DECOR.button[v.mount] ||= [])[v.pressed ? 1 : 0] = id;

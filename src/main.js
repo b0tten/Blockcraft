@@ -12,7 +12,7 @@ import { Particles } from './particles.js';
 import { Fluids } from './fluids.js';
 import { Redstone } from './redstone.js';
 import { STRUCTURE_KINDS } from './world/structures.js';
-import { MobManager, MOB_KINDS, MOB_INFO, pickMob } from './mobs.js';
+import { MobManager, MOB_KINDS, MOB_INFO, pickMob, standsIn } from './mobs.js';
 import { MobRenderer, MOB_TEXTURES } from './mobrender.js';
 import { RemoteMobs } from './net/mobs.js';
 import { PrimedTNT, explode, explosionEffects } from './entities.js';
@@ -196,10 +196,22 @@ class Game {
     });
     this.world.setRenderDistance(this.settings.renderDistance);
     this.fluids = new Fluids(this.world);
-    this.redstone = new Redstone(this.world, (x, y, z, id) => {
-      const boxes = SOLID[id] ? FULL_BOX : COLLIDE[id];
-      return !!boxes && this.player.intersectsBoxes(boxes, x, y, z);
-    });
+    const plateBox = [[0, 0, 0, 1, 0.25, 1]];
+    this.redstone = new Redstone(
+      this.world,
+      (x, y, z, id) => {
+        const boxes = SOLID[id] ? FULL_BOX : COLLIDE[id];
+        return !!boxes && this.player.intersectsBoxes(boxes, x, y, z);
+      },
+      {
+        occupied: (x, y, z) => this.player.intersectsBoxes(plateBox, x, y, z) || [...this.mobs.mobs.values()].some((m) => standsIn(m, x, y, z)),
+        ignite: (x, y, z) => {
+          this.world.setBlock(x, y, z, 0);
+          this.entities.push(new PrimedTNT(x, y, z, 4));
+          if (this.near(x, y, z, 24)) this.sound.fuse();
+        },
+      },
+    );
     this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
     this.mobs = new MobManager(this.world); // not saved: animals respawn around the player
     this.remoteMobs = null;
@@ -695,6 +707,11 @@ class Game {
       this.fluids?.update(dt);
       this.redstone?.update(dt);
       this.mobs?.update(dt, [p.pos]);
+      if (this.redstone) {
+        // Pressure plates under the player and the animals.
+        this.redstone.stepOn(Math.floor(p.pos[0]), Math.floor(p.pos[1] + 0.01), Math.floor(p.pos[2]));
+        for (const m of this.mobs.mobs.values()) this.redstone.stepOn(Math.floor(m.x), Math.floor(m.y + 0.01), Math.floor(m.z));
+      }
       this.mobSounds(dt);
       for (let i = this.entities.length - 1; i >= 0; i--) {
         const e = this.entities[i];

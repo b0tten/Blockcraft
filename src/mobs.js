@@ -288,6 +288,12 @@ export class MobManager {
   }
 }
 
+// Does mob m's box reach into the bottom quarter of block (x, y, z) (where a pressure plate is)?
+export function standsIn(m, x, y, z) {
+  const { hw } = MOB_INFO[m.kind];
+  return m.pos[0] + hw > x && m.pos[0] - hw < x + 1 && m.pos[2] + hw > z && m.pos[2] - hw < z + 1 && m.pos[1] < y + 0.25 && m.pos[1] + MOB_INFO[m.kind].h > y;
+}
+
 // Nearest mob a ray (origin o, unit direction d) hits within maxDist: { mob, dist } or null.
 export function pickMob(mobs, o, d, maxDist) {
   let best = null;

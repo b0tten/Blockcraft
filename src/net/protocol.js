@@ -42,7 +42,7 @@
 //   op      { on, key? }               you became (or stopped being) an operator; send key back
 //                                      as opKey when rejoining to keep it for a few minutes
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const DEFAULT_PORT = 8765;
 export const TICK_RATE = 20;
 export const REACH = 6;

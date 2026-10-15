@@ -932,7 +932,13 @@ const rsTorch = (t, on) => {
   t.set(7, 7, tip[2]);
   t.set(8, 7, tip[3]);
 };
+const plateItem = (t, color) => {
+  t.clear();
+  for (let y = 9; y <= 12; y++) for (let x = 1; x <= 14; x++) t.set(x, y, scale(color, y === 9 ? 1.15 : y === 12 ? 0.7 : 0.92 + t.rand() * 0.1));
+};
 Object.assign(PAINTERS, {
+  stone_plate_item: (t) => plateItem(t, [128, 128, 128]),
+  oak_plate_item: (t) => plateItem(t, [164, 132, 80]),
   redstone_block: (t) => {
     t.speckle([176, 22, 18], 0.22);
     for (let i = 0; i < 14; i++) t.set(t.rnd(16), t.rnd(16), t.pick([[236, 52, 38], [120, 12, 12], [210, 36, 28]]));

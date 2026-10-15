@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockcraft structures</title>
+<link rel="stylesheet" href="tools.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { .layout { grid-template-columns: 1fr; } }
+  #view { image-rendering: pixelated; background: #101215; border: 1px solid var(--line); border-radius: 4px; max-width: 100%; cursor: crosshair; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; position: sticky; top: 64px; }
+  #hover { font-family: ui-monospace, monospace; font-size: 12px; min-height: 3.2em; color: var(--dim); white-space: pre; }
+  #list button { display: block; width: 100%; text-align: left; margin-bottom: 4px; }
+  #list button.on { border-color: var(--accent); }
+  #pieces { font-family: ui-monospace, monospace; font-size: 12px; color: var(--dim); white-space: pre-wrap; }
+  input[type=range] { width: 260px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Structures</h1>
+  <a href="./">tools</a>
+  <label>Seed <input type="text" id="seed" value="12345" style="width: 110px"></label>
+  <select id="kind"><option>village</option><option>pyramid</option><option>well</option></select>
+  <label>near x <input type="number" id="nx" value="0" style="width: 80px"></label>
+  <label>z <input type="number" id="nz" value="0" style="width: 80px"></label>
+  <button id="find">Find</button>
+  <label><input type="checkbox" id="auto" checked> rebuild when src/world/structures.js changes</label>
+  <span class="note" id="status"></span>
+</header>
+<main class="layout">
+  <section>
+    <div class="row" style="margin-bottom: 8px">
+      <label><input type="radio" name="mode" value="slice" checked> layer</label>
+      <input type="range" id="layer" min="0" max="255" value="64">
+      <b id="layerLabel"></b>
+      <label><input type="radio" name="mode" value="top"> from above</label>
+      <span class="note">↑/↓ change the layer · blocks under an empty cell show dimmed</span>
+    </div>
+    <canvas id="view"></canvas>
+  </section>
+  <aside>
+    <div id="hover">Hover a block</div>
+    <h2>Nearest</h2>
+    <div id="list"></div>
+    <h2>Plan</h2>
+    <div id="pieces"></div>
+    <p class="note">Coordinates in brackets are relative to the structure's anchor (its centre, with y = ground height). Builders use local coordinates that are also turned by the piece's <code>rot</code>; see tools/structures.md.</p>
+  </aside>
+</main>
+<script type="module" src="structures.js"></script>
+</body>
+</html>
