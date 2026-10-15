@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockcraft textures</title>
+<link rel="stylesheet" href="tools.css">
+<style>
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px; text-align: center; cursor: pointer; }
+  .tile:hover, .tile.sel { border-color: var(--accent); }
+  .tile.edited { box-shadow: inset 0 0 0 2px #c9a227; }
+  .tile canvas { width: 64px; height: 64px; display: block; margin: 0 auto 4px; background: repeating-conic-gradient(#333 0 25%, #2a2a2a 0 50%) 0 0 / 16px 16px; }
+  .tile span { font-size: 11px; color: var(--dim); word-break: break-all; }
+  aside { position: sticky; top: 64px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; }
+  #big { width: 384px; height: 384px; display: block; cursor: crosshair; background: repeating-conic-gradient(#333 0 25%, #2a2a2a 0 50%) 0 0 / 24px 24px; }
+  #info { min-height: 1.4em; font-family: ui-monospace, monospace; font-size: 12px; color: var(--dim); }
+  .mobs { display: flex; flex-wrap: wrap; gap: 14px; }
+  .mob { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .mob .views { display: flex; gap: 10px; align-items: flex-end; }
+  .mob canvas { background: #1f2a1a; }
+  .mob figcaption { font-size: 11px; color: var(--dim); text-align: center; }
+  #code { height: 160px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Textures</h1>
+  <a href="./">tools</a>
+  <input type="text" id="filter" placeholder="Filter, e.g. cow">
+  <label><input type="checkbox" id="auto" checked> reload when src/textures.js changes</label>
+  <button id="reload">Reload now</button>
+  <span class="note" id="status"></span>
+</header>
+<main class="layout">
+  <section>
+    <h2>Mobs, as the game draws them (front · side · top)</h2>
+    <div class="mobs" id="mobs"></div>
+    <div id="groups"></div>
+  </section>
+  <aside>
+    <div class="row" style="justify-content: space-between"><b id="name">Pick a texture</b><span class="note" id="where"></span></div>
+    <canvas id="big" class="pix" width="384" height="384"></canvas>
+    <div id="info"></div>
+    <div class="row">
+      <button data-tool="pen" class="on">Pencil</button>
+      <button data-tool="erase">Eraser</button>
+      <button data-tool="pick">Eyedropper</button>
+      <input type="color" id="color" value="#4a3222">
+      <button id="undo">Undo</button>
+    </div>
+    <div class="row" style="margin-top: 8px">
+      <button id="export">Copy as code</button>
+      <button id="revert">Back to the code's version</button>
+      <button id="png">Download PNG</button>
+    </div>
+    <p class="note">Edits here only change this page (and the mob previews). To keep them, press <b>Copy as code</b> and paste the result into <code>src/textures.js</code> (see tools/README.md).</p>
+    <textarea id="code" readonly placeholder="Exported painter code appears here"></textarea>
+  </aside>
+</main>
+<script type="module" src="textures.js"></script>
+</body>
+</html>

@@ -9,7 +9,7 @@ import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
 import { Fluids } from '../src/fluids.js';
 import { Redstone } from '../src/redstone.js';
-import { MobManager, MOB_KINDS } from '../src/mobs.js';
+import { MobManager, MOB_KINDS, standsIn } from '../src/mobs.js';
 import { PrimedTNT, blast } from '../src/entities.js';
 import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
 import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
@@ -126,7 +126,13 @@ export class GameServer {
     this.world = new ServerWorld(seed, edits, signs, this.meta.gen ?? 1);
     this.world.allow = (x, z) => this.inBorder(x, z);
     this.fluids = new Fluids(this.world);
-    this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null));
+    this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null), {
+      occupied: (x, y, z) => this.standingIn(x, y, z),
+      ignite: (x, y, z) => {
+        this.world.setBlock(x, y, z, 0);
+        this.spawnTnt(x, y, z, 4);
+      },
+    });
     this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
     this.mobs = new MobManager(this.world, { spawning: this.config.mobs !== false });
     this.tnts = [];
@@ -390,6 +396,16 @@ export class GameServer {
 
   near(c, x, z, r) {
     return !!c.pos && (x + 0.5 - c.pos[0]) ** 2 + (z + 0.5 - c.pos[2]) ** 2 <= r * r;
+  }
+
+  // Is a player or mob standing in block (x, y, z) (on a pressure plate there)?
+  standingIn(x, y, z) {
+    for (const o of this.byId.values()) {
+      const p = o.pos;
+      if (p && p[0] + HALF_W > x && p[0] - HALF_W < x + 1 && p[2] + HALF_W > z && p[2] - HALF_W < z + 1 && p[1] < y + 0.25 && p[1] + HEIGHT > y) return true;
+    }
+    for (const m of this.mobs.mobs.values()) if (standsIn(m, x, y, z)) return true;
+    return false;
   }
 
   // Would a solid block at (x, y, z) overlap a player other than `except`?
@@ -789,6 +805,9 @@ export class GameServer {
     this.fluids.update(DT);
     this.redstone.update(DT);
     this.mobs.update(DT, [...this.byId.values()].filter((c) => c.pos).map((c) => c.pos));
+    // Pressure plates under players and animals.
+    for (const c of this.byId.values()) if (c.pos) this.redstone.stepOn(Math.floor(c.pos[0]), Math.floor(c.pos[1] + 0.01), Math.floor(c.pos[2]));
+    for (const m of this.mobs.mobs.values()) this.redstone.stepOn(Math.floor(m.x), Math.floor(m.y + 0.01), Math.floor(m.z));
     for (let i = this.tnts.length - 1; i >= 0; i--) {
       const e = this.tnts[i];
       if (e.update(DT, w)) {

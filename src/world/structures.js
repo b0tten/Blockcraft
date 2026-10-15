@@ -91,8 +91,9 @@ export class Structures {
   planVillage(ax, az, rng, style) {
     const y = this.site(ax - 2, az - 2, ax + 1, az + 1, 2);
     if (y === null) return null;
-    const pieces = [{ build: buildVillageWell, x: ax, y, z: az, rot: 0, box: [ax - 3, az - 3, ax + 2, az + 2], style }];
+    const pieces = [{ name: 'well', build: buildVillageWell, x: ax, y, z: az, rot: 0, box: [ax - 3, az - 3, ax + 2, az + 2], style }];
     const path = [];
+    const level = []; // [x, z, y]: path cells set to exactly floor height (in front of doors)
     // The ring of path around the well.
     for (let d = -3; d <= 2; d++) path.push([ax + d, az - 3], [ax + d, az + 2], [ax - 3, az + d], [ax + 2, az + d]);
     const n = 4 + Math.floor(rng() * 4);
@@ -103,7 +104,8 @@ export class Structures {
       const dist = (i % 2 ? 14 : 9) + rng() * 4;
       const hx = Math.round(ax + Math.cos(angle) * dist), hz = Math.round(az + Math.sin(angle) * dist);
       const kind = rng();
-      const t = kind < 0.3 ? HOUSES.garden : kind < 0.65 ? HOUSES.small : HOUSES.big;
+      const name = kind < 0.3 ? 'garden' : kind < 0.65 ? 'small' : 'big';
+      const t = HOUSES[name];
       // Face the well.
       const dx = ax - hx, dz = az - hz;
       let rot = 0, best = -Infinity;
@@ -119,7 +121,7 @@ export class Structures {
       if (pieces.some((p) => overlaps(p.box, box, 2))) continue;
       const hy = this.site(box[0], box[1], box[2], box[3], 3);
       if (hy === null || Math.abs(hy - y) > 6) continue;
-      pieces.push({ build: t.build, x: hx, y: hy, z: hz, rot, box, style });
+      pieces.push({ name, build: t.build, x: hx, y: hy, z: hz, rot, box, style });
       placed++;
       // A path from the well to the cell in front of the door.
       const [fx, fz] = DIRS[rot];
@@ -127,24 +129,28 @@ export class Structures {
       const tx = hx + lx, tz = hz + lz;
       const sx = ax + Math.sign(tx - ax) * 3, sz = az + Math.sign(tz - az) * 3;
       for (const [px, pz] of lPath(sx, sz, tx, tz, rng() < 0.5)) path.push([px, pz]);
-      path.push([tx + fx, tz + fz]);
+      // The two cells in front of the door sit level with the floor, so the ground can't
+      // block the doorway.
+      level.push([tx, tz, hy], [tx + fx, tz + fz, hy]);
     }
     if (pieces.length < 3) return null; // too few houses fit: no village here
-    const clearPath = path.filter(([x, z]) => !pieces.some((p) => inside(p.box, x, z)));
-    return finish({ kind: 'village', x: ax, y, z: az, pieces, path: clearPath, style });
+    const isLevel = (x, z) => level.some(([lx, lz]) => lx === x && lz === z);
+    const clearPath = path.filter(([x, z]) => !pieces.some((p) => inside(p.box, x, z)) && !isLevel(x, z));
+    const clearLevel = level.filter(([x, z]) => !pieces.some((p) => inside(p.box, x, z)));
+    return finish({ kind: 'village', x: ax, y, z: az, pieces, path: clearPath, level: clearLevel, style });
   }
 
   planPyramid(ax, az, rng) {
     const y = this.site(ax - 10, az - 10, ax + 10, az + 10, 5);
     if (y === null) return null;
     const rot = Math.floor(rng() * 4);
-    return finish({ kind: 'pyramid', x: ax, y, z: az, pieces: [{ build: buildPyramid, x: ax, y, z: az, rot, box: [ax - 10, az - 10, ax + 10, az + 10] }], path: [] });
+    return finish({ kind: 'pyramid', x: ax, y, z: az, pieces: [{ name: 'pyramid', build: buildPyramid, x: ax, y, z: az, rot, box: [ax - 10, az - 10, ax + 10, az + 10] }], path: [], level: [] });
   }
 
   planWell(ax, az, rng) {
     const y = this.site(ax - 2, az - 2, ax + 2, az + 2, 2);
     if (y === null) return null;
-    return finish({ kind: 'well', x: ax, y, z: az, pieces: [{ build: buildDesertWell, x: ax, y, z: az, rot: 0, box: [ax - 2, az - 2, ax + 2, az + 2] }], path: [] });
+    return finish({ kind: 'well', x: ax, y, z: az, pieces: [{ name: 'desert well', build: buildDesertWell, x: ax, y, z: az, rot: 0, box: [ax - 2, az - 2, ax + 2, az + 2] }], path: [], level: [] });
   }
 
   // ------------------------------------------------------------ building
@@ -166,6 +172,7 @@ export class Structures {
     if (!p || !overlaps(p.box, [x0, z0, x0 + 15, z0 + 15], 0)) return;
     const inChunk = (x, z) => x >= x0 && x < x0 + 16 && z >= z0 && z < z0 + 16;
     const ctx = {
+      version: this.gen.version, // terrain generator version, for builders that change over time
       put(x, y, z, id) {
         if (!inChunk(x, z) || y < 1 || y >= H) return;
         blocks[blockIndex(x - x0, y, z - z0)] = id;
@@ -195,6 +202,13 @@ export class Structures {
         }
         break;
       }
+    }
+    // Door steps: paving exactly at floor height, with a foundation under it and air above.
+    for (const [x, z, y] of p.level) {
+      if (!inChunk(x, z)) continue;
+      ctx.foundation(x, y - 1, z, B.dirt);
+      ctx.put(x, y, z, p.style.path);
+      for (let k = 1; k <= 3; k++) ctx.put(x, y + k, z, 0);
     }
   }
 
@@ -231,7 +245,7 @@ function finish(p) {
     b[2] = Math.max(b[2], q.box[2]);
     b[3] = Math.max(b[3], q.box[3]);
   }
-  for (const [x, z] of p.path) {
+  for (const [x, z] of [...p.path, ...p.level]) {
     b[0] = Math.min(b[0], x);
     b[1] = Math.min(b[1], z);
     b[2] = Math.max(b[2], x);

@@ -8,16 +8,18 @@ import { WORLD_HEIGHT as H } from './constants.js';
 import { sweepAxis, boxHits } from './physics.js';
 
 export const MOB_KINDS = ['pig', 'cow', 'sheep', 'chicken'];
-// hw: half width, h: height, speed in blocks/s, hp: hits to remove.
+// hw: half width of the collision box (covers the body), h: height, front: how far the head
+// reaches ahead of the centre (so it stops before poking into walls), speed in blocks/s,
+// hp: hits to remove.
 export const MOB_INFO = {
-  pig: { hw: 0.35, h: 1.0, speed: 1.5, hp: 2, puff: 'pink_wool' },
-  cow: { hw: 0.45, h: 1.5, speed: 1.3, hp: 2, puff: 'brown_wool' },
-  sheep: { hw: 0.35, h: 1.3, speed: 1.3, hp: 2, puff: 'white_wool' },
-  chicken: { hw: 0.2, h: 0.7, speed: 1.2, hp: 2, puff: 'white_wool' },
+  pig: { hw: 0.45, h: 1.0, front: 0.9, speed: 1.5, hp: 2, puff: 'pink_wool' },
+  cow: { hw: 0.48, h: 1.5, front: 0.95, speed: 1.3, hp: 2, puff: 'brown_wool' },
+  sheep: { hw: 0.45, h: 1.3, front: 0.85, speed: 1.3, hp: 2, puff: 'white_wool' },
+  chicken: { hw: 0.25, h: 0.7, front: 0.5, speed: 1.2, hp: 2, puff: 'white_wool' },
 };
 
 const GRAVITY = 28;
-const JUMP = 7.6;
+const JUMP = 9.2; // clears a full block even at the server's 20 ticks a second
 const HURT_TIME = 0.4;
 const KNOCKBACK = 7;
 const SPAWN_EVERY = 2; // seconds
@@ -83,7 +85,13 @@ export class Mob {
         d = Math.atan2(Math.sin(d), Math.cos(d));
         this.yaw += Math.sign(d) * Math.min(Math.abs(d), dt * 5);
         const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
-        if (this.safeAhead(world, p[0] + fx * (hw + 0.4), p[1], p[2] + fz * (hw + 0.4))) {
+        const reach = Math.max(this.info.front, hw) + 0.15;
+        const ahead = this.ahead(world, p[0] + fx * reach, p[1], p[2] + fz * reach, inWater);
+        if (ahead === 'step') {
+          // Hop up before the head reaches the block.
+          if (this.onGround || inWater) v[1] = JUMP;
+        }
+        if (ahead !== 'blocked' && (ahead === 'step' || this.safeAhead(world, p[0] + fx * (hw + 0.4), p[1], p[2] + fz * (hw + 0.4)))) {
           mx = fx * speed;
           mz = fz * speed;
           this.walking = true;
@@ -113,6 +121,26 @@ export class Mob {
     // Hop up a one-block step when walking into it.
     if ((hitX || hitZ) && this.walking && (this.onGround || inWater) && !boxHits(world, p[0] - hw, p[1] + 1.05, p[2] - hw, p[0] + hw, p[1] + 1.05 + h, p[2] + hw)) v[1] = JUMP;
     if (p[1] < -20) p[1] = H; // fell out of the world: shouldn't happen, but don't fall forever
+  }
+
+  // What's in front at (x, z): 'clear', a one-block 'step' it can hop onto, or 'blocked'
+  // (a wall it would poke its head into).
+  ahead(world, x, y, z, inWater) {
+    const bx = Math.floor(x), bz = Math.floor(z), by = Math.floor(y + 0.01);
+    const { hw, h } = this.info;
+    const tall = Math.ceil(h);
+    let feet = false;
+    for (let k = 0; k < tall; k++) {
+      if (!world.boxesAt(bx, by + k, bz)) continue;
+      if (k > 0) return 'blocked';
+      feet = true;
+    }
+    if (!feet) return 'clear';
+    for (let k = 1; k <= tall; k++) if (world.boxesAt(bx, by + k, bz)) return 'blocked';
+    const p = this.pos;
+    // Room above its own head to jump into?
+    if (boxHits(world, p[0] - hw, p[1] + 1.05, p[2] - hw, p[0] + hw, p[1] + 1.05 + h, p[2] + hw)) return 'blocked';
+    return inWater || this.onGround || this.vel[1] > 0 ? 'step' : 'clear';
   }
 
   // Is the ground in front firm, dry and not a cliff?
@@ -192,8 +220,7 @@ export class MobManager {
       const sx = x + Math.floor((this.rng() - 0.5) * 6), sz = z + Math.floor((this.rng() - 0.5) * 6);
       const gy = this.grassAt(sx, y, sz);
       if (gy === null) continue;
-      this.add(kind, sx + 0.5, gy + 1, sz + 0.5);
-      made++;
+      if (this.add(kind, sx + 0.5, gy + 1, sz + 0.5)) made++;
     }
     return made;
   }
@@ -213,7 +240,12 @@ export class MobManager {
     return null;
   }
 
+  // A new mob, nudged up out of any block it would overlap; null if there's no room.
   add(kind, x, y, z) {
+    const { hw, h } = MOB_INFO[kind];
+    let k = 0;
+    while (boxHits(this.world, x - hw, y + k, z - hw, x + hw, y + k + h, z + hw)) if (++k > 3) return null;
+    y += k;
     const m = new Mob(this.nextId++, kind, x, y, z, this.rng);
     this.mobs.set(m.id, m);
     return m;
@@ -221,7 +253,10 @@ export class MobManager {
 
   summon(kind, x, y, z, count = 1) {
     const out = [];
-    for (let i = 0; i < count && this.mobs.size < MAX_MOBS; i++) out.push(this.add(kind, x + (this.rng() - 0.5) * 0.6, y, z + (this.rng() - 0.5) * 0.6));
+    for (let i = 0; i < count && this.mobs.size < MAX_MOBS; i++) {
+      const m = this.add(kind, x + (this.rng() - 0.5) * 0.6, y, z + (this.rng() - 0.5) * 0.6) || this.add(kind, x, y, z);
+      if (m) out.push(m);
+    }
     return out;
   }
 
@@ -251,6 +286,12 @@ export class MobManager {
     this.mobs.clear();
     this.removed = [];
   }
+}
+
+// Does mob m's box reach into the bottom quarter of block (x, y, z) (where a pressure plate is)?
+export function standsIn(m, x, y, z) {
+  const { hw } = MOB_INFO[m.kind];
+  return m.pos[0] + hw > x && m.pos[0] - hw < x + 1 && m.pos[2] + hw > z && m.pos[2] - hw < z + 1 && m.pos[1] < y + 0.25 && m.pos[1] + MOB_INFO[m.kind].h > y;
 }
 
 // Nearest mob a ray (origin o, unit direction d) hits within maxDist: { mob, dist } or null.

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockcraft dev tools</title>
+<link rel="stylesheet" href="tools.css">
+<style>
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; max-width: 900px; }
+  .cards a { display: block; padding: 14px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); text-decoration: none; }
+  .cards a:hover { border-color: var(--accent); }
+  .cards b { display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<header><h1>Blockcraft dev tools</h1><a href="../">← the game</a></header>
+<main>
+  <p class="note">Local helpers for editing the game's look and sound without restarting it. They load the game's own modules from <code>src/</code>, so what you see is exactly what the game paints and plays. See <a href="README.md">tools/README.md</a> for how textures and sounds work.</p>
+  <div class="cards">
+    <a href="textures.html"><b>Texture viewer &amp; pixel editor</b>Every texture as the game paints it, mob previews, live reload when <code>src/textures.js</code> changes, and a pixel editor that exports code you can paste back.</a>
+    <a href="structures.html"><b>Structure viewer</b>Villages, pyramids and wells for any seed, layer by layer, with block names and coordinates relative to the structure. Rebuilds when <code>src/world/structures.js</code> changes.</a>
+    <a href="sounds.html"><b>Sound board</b>Play every sound effect (animals, blocks, explosions…) straight from <code>src/audio.js</code>, re-read on every click, plus a scratch pad for trying synth parameters.</a>
+  </div>
+</main>
+</body>
+</html>

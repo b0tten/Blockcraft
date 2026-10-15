@@ -1,0 +1,19 @@
+/* Shared look for the developer tools. */
+:root { color-scheme: dark; --bg: #1b1d22; --panel: #252830; --line: #3a3e48; --text: #e6e6e6; --dim: #9aa0aa; --accent: #6fbf5a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+header h1 { font-size: 16px; margin: 0; }
+header a { color: var(--dim); }
+main { padding: 16px; }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin: 22px 0 8px; }
+button, select, input[type=text], input[type=number] { background: #30343e; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 5px 9px; font: inherit; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.on { background: #3d5a35; border-color: var(--accent); }
+label { color: var(--dim); }
+code, pre, textarea { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; }
+textarea { width: 100%; background: #14161a; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.note { color: var(--dim); font-size: 13px; }
+canvas.pix { image-rendering: pixelated; }

@@ -104,6 +104,8 @@ Redstone items are in the inventory (search "redstone", "lever", "piston"...). A
 - **Redstone dust** carries power along connected dust: 15 at the source, one less per block, up and down one-block steps too. It powers lamps and pistons beside or below it, and a repeater it sits behind.
 - **Repeater** passes power forward only and renders it back to full strength. Place it facing the way the signal should go; click it to set the delay (1-4 ticks of 0.1 s), shown by the moving torch.
 - **Block of redstone** is a passive power source: it powers dust, lamps, pistons and repeaters on every side, and can be pushed by pistons.
+- **Pressure plates** (stone and oak) give power while a player or an animal stands on them, and drop when the block under them goes.
+- **TNT** next to power (or on a powered block) is lit, so plates and levers can set off traps.
 - **Redstone torch** stands on a block (not on walls) and is a power source: it powers dust beside it and the block above it, and turns off while the block it stands on is powered, so it works as an inverter.
 - **Redstone lamp** lights up (and gives light) while powered.
 - **Piston** pushes up to 12 blocks, **sticky piston** also pulls one back. Plants, torches and other small blocks are broken instead of pushed; bedrock, obsidian and extended pistons can't be moved. A piston will not extend into a player. It points up or down when placed on a floor or ceiling, otherwise the way you face.
@@ -116,7 +118,7 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 - **Caves**, lava pools, and coal, iron, gold and diamond ores
 - **Trees** (oak, birch, spruce), cacti, sugar cane, flowers, grass and mushrooms
 - **80 block types**, including glass, TNT, glowstone, torches, bookshelves, 16 wool colours and ore blocks
-- **Redstone**: redstone lamps, torches, levers, buttons, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
+- **Redstone**: redstone lamps, torches, levers, buttons, pressure plates, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
 - **Villages, desert pyramids and desert wells** in new worlds (`/locate village` finds the nearest)
 - **Animals**: pigs, cows, sheep and chickens wander the grasslands; punch one to push it, twice to make it vanish (`/summon pig` makes more)
 - **Decorations**: doors that open and close, climbable ladders, beds, signs you can write on, and flower pots for flowers, mushrooms and ferns
@@ -155,6 +157,10 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 | Esc | Pause |
 
 On phones and tablets: use the left-side joystick to move, drag anywhere to look, tap to place, press and hold to break, ↑ to jump (double-tap to fly), ↓ to sneak or fly down, and tap hotbar slots to select them. The speech-bubble button opens chat. Its quick buttons type a command such as `/time` and then offer its options (they also appear when you type the command yourself).
+
+## Developer tools
+
+`tools/` has local helpers for editing textures and sounds without restarting the game: a texture viewer and pixel editor with mob previews, a structure viewer, and a sound board. Run `npm start` and open `http://localhost:8080/tools/`. [tools/README.md](tools/README.md) explains how textures and sounds are made and how to change them, and [tools/structures.md](tools/structures.md) how structures are built and edited.
 
 ## How it works
 

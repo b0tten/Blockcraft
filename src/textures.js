@@ -284,6 +284,19 @@ function flower(t, petal, center) {
   );
 }
 
+// Hand-drawn pixel art (what tools/textures.html exports): 16 rows of 16 characters, each a
+// key of `palette` ([r, g, b] or [r, g, b, a]); '.' is transparent.
+function pixelArt(t, palette, rows) {
+  t.clear();
+  rows.forEach((row, y) => [...row].forEach((ch, x) => ch !== '.' && palette[ch] && t.set(x, y, palette[ch])));
+}
+
+// Raw RGBA pixels (256 * 4 bytes) as base64, for drawings with too many colours for pixelArt.
+function pixelData(t, base64) {
+  const bin = atob(base64);
+  for (let i = 0; i < t.data.length && i < bin.length; i++) t.data[i] = bin.charCodeAt(i);
+}
+
 function drawPattern(t, x0, y0, rows, color) {
   rows.forEach((row, dy) => [...row].forEach((ch, dx) => ch === '#' && t.set(x0 + dx, y0 + dy, color)));
 }
@@ -919,7 +932,13 @@ const rsTorch = (t, on) => {
   t.set(7, 7, tip[2]);
   t.set(8, 7, tip[3]);
 };
+const plateItem = (t, color) => {
+  t.clear();
+  for (let y = 9; y <= 12; y++) for (let x = 1; x <= 14; x++) t.set(x, y, scale(color, y === 9 ? 1.15 : y === 12 ? 0.7 : 0.92 + t.rand() * 0.1));
+};
 Object.assign(PAINTERS, {
+  stone_plate_item: (t) => plateItem(t, [128, 128, 128]),
+  oak_plate_item: (t) => plateItem(t, [164, 132, 80]),
   redstone_block: (t) => {
     t.speckle([176, 22, 18], 0.22);
     for (let i = 0; i < 14; i++) t.set(t.rnd(16), t.rnd(16), t.pick([[236, 52, 38], [120, 12, 12], [210, 36, 28]]));
@@ -1055,4 +1074,4 @@ export function buildTextureArray(names) {
   return { data, layers, images, count: names.length };
 }
 
-export { mix };
+export { mix, pixelArt, pixelData, PAINTERS };
