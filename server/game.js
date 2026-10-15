@@ -9,10 +9,11 @@ import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
 import { Fluids } from '../src/fluids.js';
 import { Redstone } from '../src/redstone.js';
+import { MobManager, MOB_KINDS } from '../src/mobs.js';
 import { PrimedTNT, blast } from '../src/entities.js';
 import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
 import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
-import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, chunkKey } from '../src/constants.js';
+import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, GEN_VERSION, chunkKey } from '../src/constants.js';
 import { editsToArray, signsToArray } from '../src/world/edits.js';
 import { timeLabel } from '../src/sky.js';
 import { clamp } from '../src/math.js';
@@ -27,8 +28,8 @@ const HALF_W = 0.3;
 const HEIGHT = 1.8;
 const OP_GRACE_MS = 5 * 60 * 1000;
 const sha256 = (s) => createHash('sha256').update(String(s)).digest();
-const OP_HELP = 'Operator commands: /kick <name> [reason], /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], /unban <name or word>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
-const OP_COMMANDS = new Set(['ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
+const OP_HELP = 'Operator commands: /summon <pig|cow|sheep|chicken> [count], /kick <name> [reason], /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], /unban <name or word>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
+const OP_COMMANDS = new Set(['summon', 'ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
 const BID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const DURATION = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
 // "30m", "2h", "7d" -> milliseconds, or null.
@@ -51,6 +52,7 @@ const BAN_USAGE = 'Usage: /ban <name> [name|includes_name|browser|both] [30m|2h|
 const MIN_BAN_WORD = 3;
 const banMessage = (e) => `You are banned from this server${e.until ? ` for another ${formatSpan(e.until - Date.now())}` : ''}${e.reason ? `: ${e.reason}` : '.'}`;
 const isNum = Number.isFinite;
+const round2 = (v) => Math.round(v * 100) / 100;
 const round3 = (v) => Math.round(v * 1000) / 1000;
 const cleanText = (s) => String(s).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, MAX_CHAT);
 
@@ -121,11 +123,12 @@ export class GameServer {
   }
 
   newWorld(seed, edits, signs) {
-    this.world = new ServerWorld(seed, edits, signs);
+    this.world = new ServerWorld(seed, edits, signs, this.meta.gen ?? 1);
     this.world.allow = (x, z) => this.inBorder(x, z);
     this.fluids = new Fluids(this.world);
     this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null));
     this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
+    this.mobs = new MobManager(this.world, { spawning: this.config.mobs !== false });
     this.tnts = [];
     this.events = [];
   }
@@ -162,7 +165,7 @@ export class GameServer {
     this.resetting = true;
     for (const c of [...this.clients]) this.kick(c, 'The world is being reset. Join again in a moment!');
     const seed = this.config.seed ?? Math.floor(Math.random() * 2147483647);
-    this.meta = { ...this.meta, seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
+    this.meta = { ...this.meta, seed, gen: GEN_VERSION, created: Date.now(), time: 0.03, dayCycle: true, spawn: null };
     this.newWorld(seed, new Map(), new Map());
     this.saved = {};
     this.meta.spawn = this.world.findSpawn();
@@ -275,6 +278,7 @@ export class GameServer {
       case 'use': return this.onUse(c, m);
       case 'sign': return this.onSign(c, m);
       case 'swing': return this.broadcast({ t: 'swing', id: c.id }, c);
+      case 'hit': return this.onHit(c, m);
       case 'chat': return this.onChat(c, m);
       default: // unknown types are ignored so newer clients can add optional messages
     }
@@ -317,6 +321,7 @@ export class GameServer {
       server: this.config.name,
       motd: this.config.motd,
       seed: this.meta.seed,
+      gen: this.meta.gen ?? 1,
       time: this.meta.time,
       cycle: this.meta.dayCycle,
       spawn: this.meta.spawn,
@@ -473,6 +478,15 @@ export class GameServer {
     this.event(x, z, { t: 'sign', x, y, z, l: lines }, c);
   }
 
+  // A player punches a mob: knockback, and it's gone after two hits.
+  onHit(c, m) {
+    const mob = isInt(m.id) ? this.mobs.mobs.get(m.id) : null;
+    if (!mob || !c.pos || !c.edits.take()) return;
+    const ex = c.pos[0], ey = c.pos[1] + 1.6, ez = c.pos[2];
+    if (Math.hypot(mob.x - ex, mob.y + mob.info.h / 2 - ey, mob.z - ez) > REACH + 1.5) return;
+    this.mobs.hit(mob.id, c.pos[0], c.pos[2]);
+  }
+
   onIgnite(c, m) {
     const { x, y, z } = m;
     if (!this.validPos(x, y, z)) return;
@@ -592,6 +606,16 @@ export class GameServer {
       case 'ophelp':
         reply(OP_HELP);
         return true;
+      case 'summon': {
+        const kind = (args[0] || '').toLowerCase();
+        if (!MOB_KINDS.includes(kind)) return reply(`Usage: /summon <${MOB_KINDS.join('|')}> [count]`), true;
+        if (!c?.pos) return reply('Use /summon in game: animals appear in front of you'), true;
+        const n = clamp(Math.round(Number(args[1] ?? 1)) || 1, 1, 10);
+        const fx = -Math.sin(c.yaw || 0), fz = -Math.cos(c.yaw || 0);
+        const made = this.mobs.summon(kind, c.pos[0] + fx * 2, c.pos[1] + 0.2, c.pos[2] + fz * 2, n);
+        reply(`Summoned ${made.length} ${kind}${made.length === 1 ? '' : 's'}`);
+        return true;
+      }
       case 'kick': {
         const t = this.findOnline(args[0]);
         if (!t) return reply(`No player called "${args[0] ?? ''}" is online`), true;
@@ -764,6 +788,7 @@ export class GameServer {
     if (this.meta.dayCycle) this.meta.time = (this.meta.time + DT / DAY_LENGTH_SECONDS) % 1;
     this.fluids.update(DT);
     this.redstone.update(DT);
+    this.mobs.update(DT, [...this.byId.values()].filter((c) => c.pos).map((c) => c.pos));
     for (let i = this.tnts.length - 1; i >= 0; i--) {
       const e = this.tnts[i];
       if (e.update(DT, w)) {
@@ -774,6 +799,7 @@ export class GameServer {
     this.flushBlocks();
     this.flushEvents();
     this.sendPlayers();
+    if (this.ticks % 2 === 0) this.sendMobs();
 
     const every = (s) => this.ticks % Math.round(TICK_RATE * s) === 0;
     if (every(10)) this.sendTime();
@@ -786,6 +812,33 @@ export class GameServer {
     }
     if (every(60)) this.save();
     if (every(1)) this.checkReset();
+  }
+
+  // Mobs in each client's loaded chunks, 10 times a second: new and moved ones in `mobs`,
+  // removed ones (or ones that walked out of view) in `mobgone`.
+  sendMobs() {
+    const removed = this.mobs.takeRemoved();
+    if (!this.byId.size) return;
+    const states = new Map();
+    for (const m of this.mobs.mobs.values()) {
+      const s = [m.id, MOB_KINDS.indexOf(m.kind), round2(m.x), round2(m.y), round2(m.z), round2(m.yaw), m.hurt > 0 ? 1 : 0];
+      const moved = !m.sent || s.some((v, i) => v !== m.sent[i]);
+      m.sent = s;
+      states.set(m.id, { s, moved, key: chunkKey(Math.floor(m.x) >> 4, Math.floor(m.z) >> 4) });
+    }
+    for (const c of this.byId.values()) {
+      const known = (c.mobs ||= new Set());
+      const list = [], gone = [];
+      for (const [id, st] of states) {
+        if (c.subs.has(st.key)) {
+          if (st.moved || !known.has(id)) list.push(st.s);
+          known.add(id);
+        } else if (known.delete(id)) gone.push([id, 0]);
+      }
+      for (const [id, puff] of removed) if (known.delete(id)) gone.push([id, puff ? 1 : 0]);
+      if (list.length) this.send(c, { t: 'mobs', s: list });
+      if (gone.length) this.send(c, { t: 'mobgone', g: gone });
+    }
   }
 
   // Send each client the block changes in chunks it has loaded, in order.

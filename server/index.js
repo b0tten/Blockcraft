@@ -17,6 +17,7 @@ import { GameServer } from './game.js';
 import { loadWorld } from './storage.js';
 import { parseSeed } from '../src/storage.js';
 import { DEFAULT_PORT, PROTOCOL_VERSION } from '../src/net/protocol.js';
+import { GEN_VERSION } from '../src/constants.js';
 
 const HELP = `Blockcraft dedicated server
 
@@ -31,6 +32,7 @@ Usage: node server/index.js [options]
   --max-players <n>   player limit (default 20, env MAX_PLAYERS)
   --border <chunks>   world border: this many chunks each way from spawn (env BORDER)
   --reset-days <n>    start a fresh world every n days, e.g. 7 or 0.5 (env RESET_DAYS)
+  --mobs <on|off>     animals spawning around players (default on, env MOBS)
   --tls-cert <file>   certificate (PEM) to also serve https:// and wss:// (env TLS_CERT);
                       plain http:// keeps working on the same port, and renewed
                       certificate files are picked up automatically
@@ -51,6 +53,7 @@ const OPTIONS = {
     'max-players': { type: 'string' },
     border: { type: 'string' },
     'reset-days': { type: 'string' },
+    mobs: { type: 'string' },
     'tls-cert': { type: 'string' },
     'tls-key': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
@@ -95,6 +98,7 @@ const config = {
   border: Math.max(0, Math.floor(Number(opt.border ?? env.BORDER ?? 0)) || 0),
   resetDays: Math.max(0, Number(opt['reset-days'] ?? env.RESET_DAYS ?? 0) || 0),
   seed: (opt.seed ?? env.SEED) ? parseSeed(opt.seed ?? env.SEED) : null,
+  mobs: !/^(off|false|0|no)$/i.test(String(opt.mobs ?? env.MOBS ?? 'on')),
 };
 const tlsCert = opt['tls-cert'] ?? env.TLS_CERT;
 const tlsKey = opt['tls-key'] ?? env.TLS_KEY;
@@ -107,7 +111,7 @@ let loaded = await loadWorld(dir);
 if (!loaded) {
   const seed = parseSeed(opt.seed ?? env.SEED ?? '');
   loaded = {
-    meta: { name: basename(dir), seed, created: Date.now(), time: 0.03, dayCycle: true, spawn: null },
+    meta: { name: basename(dir), seed, gen: GEN_VERSION, created: Date.now(), time: 0.03, dayCycle: true, spawn: null },
     edits: new Map(),
     players: {},
     bans: {},

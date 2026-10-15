@@ -212,7 +212,9 @@ out vec4 outColor;
 void main() {
   vec4 c = texture(u_tex, v_uvl);
   if (c.a < 0.5) discard;
-  vec3 col = mix(c.rgb * v_light.x, vec3(1.0), v_light.y);
+  // Flash: positive towards white (primed TNT), negative towards red (a mob that was hit).
+  vec3 lit = c.rgb * v_light.x;
+  vec3 col = v_light.y >= 0.0 ? mix(lit, vec3(1.0), v_light.y) : mix(lit, vec3(0.9, 0.12, 0.08), -v_light.y);
   float fog = smoothstep(u_fogRange.x, u_fogRange.y, v_fog);
   outColor = vec4(mix(col, u_fogColor, fog), 1.0);
 }`;

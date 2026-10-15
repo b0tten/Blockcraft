@@ -25,3 +25,7 @@ export const FACE_DIRS = [
 export const chunkKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 
 export const DAY_LENGTH_SECONDS = 20 * 60;
+
+// Terrain generator versions. Saves store only edits on top of regenerated terrain, so a world
+// keeps the version it was created with: 1 = original terrain, 2 = with structures.
+export const GEN_VERSION = 2;

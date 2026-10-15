@@ -16,10 +16,11 @@
 //   sign   { x, y, z, l: [4 lines] }   set the text of a sign
 //   ignite { x, y, z }                 light a TNT block
 //   swing  {}                          arm swing, shown to other players
+//   hit    { id }                      punch a mob (knocked back; gone after two hits)
 //   chat   { m }                       chat line, or a /command the server handles
 //
 // Server -> client
-//   welcome { v, id, name, server, motd, seed, time, cycle, spawn: [x, y, z], you, players: [{ id, name }] }
+//   welcome { v, id, name, server, motd, seed, gen, time, cycle, spawn: [x, y, z], you, players: [{ id, name }] }
 //   bye     { reason }                 sent right before the server closes the connection
 //   chunk   { cx, cz, e: [index, id, ...], s: [[index, lines], ...] }   all edits and sign
 //                                      text of a subscribed chunk (reply to sub)
@@ -32,13 +33,16 @@
 //   boom    { x, y, z, r, d: [x, y, z, id, ...] }   explosion (d = blocks to show debris for)
 //   fx      { k: 'break' | 'place', x, y, z, id }   another player's edit, for particles and sound
 //   swing   { id }
+//   mobs    { s: [[id, kind, x, y, z, yaw, hurt], ...] }   mobs in loaded chunks that appeared
+//                                      or moved; kind indexes MOB_KINDS in mobs.js, hurt is 0/1
+//   mobgone { g: [[id, puff], ...] }   mobs removed (puff 1: punched away) or out of view
 //   sign    { x, y, z, l }             someone changed a sign's text
 //   tp      { p: [x, y, z] }           move the player (e.g. back from the world border)
 //   (redstone needs no messages of its own: the server runs it and sends the resulting `blocks`)
 //   op      { on, key? }               you became (or stopped being) an operator; send key back
 //                                      as opKey when rejoining to keep it for a few minutes
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const DEFAULT_PORT = 8765;
 export const TICK_RATE = 20;
 export const REACH = 6;
@@ -55,4 +59,4 @@ export const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
 export const NAME_RULES = 'Names are 1–16 letters, digits or underscores.';
 
 // Chat commands the server runs (everything else is handled by the client).
-export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who', 'ophelp', 'kick', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
+export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who', 'ophelp', 'kick', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist', 'summon']);

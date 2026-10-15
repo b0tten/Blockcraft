@@ -125,4 +125,26 @@ export class Sound {
   pop() {
     this.tone({ freq: 500, endFreq: 1100, dur: 0.08, type: 'sine', gain: 0.1 });
   }
+
+  // Animal calls, quieter with distance (gain 0..1).
+  mob(kind, gain = 1) {
+    if (gain <= 0.02) return;
+    const g = (v) => v * gain;
+    if (kind === 'pig') {
+      this.tone({ freq: 230, endFreq: 150, dur: 0.16, type: 'sawtooth', gain: g(0.07) });
+      this.tone({ freq: 210, endFreq: 140, dur: 0.14, type: 'sawtooth', gain: g(0.06), delay: 0.2 });
+    } else if (kind === 'cow') {
+      this.tone({ freq: 160, endFreq: 110, dur: 0.9, type: 'sawtooth', gain: g(0.08) });
+      this.burst({ freq: 400, type: 'lowpass', q: 0.6, dur: 0.8, gain: g(0.05) });
+    } else if (kind === 'sheep') {
+      for (let i = 0; i < 4; i++) this.tone({ freq: 420 - i * 15, endFreq: 380 - i * 15, dur: 0.12, type: 'triangle', gain: g(0.07), delay: i * 0.1 });
+    } else if (kind === 'chicken') {
+      for (let i = 0; i < 3; i++) this.tone({ freq: 1100 + Math.random() * 300, endFreq: 800, dur: 0.05, type: 'square', gain: g(0.03), delay: i * 0.09 });
+    }
+  }
+
+  mobHurt(kind) {
+    this.burst({ freq: 700, type: 'bandpass', q: 1.2, dur: 0.12, gain: 0.25 });
+    this.mob(kind, 1.2);
+  }
 }

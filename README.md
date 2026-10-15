@@ -45,6 +45,7 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 | `--max-players` | `MAX_PLAYERS` | `20` | |
 | `--border` | `BORDER` | off | world border: chunks each way from spawn |
 | `--reset-days` | `RESET_DAYS` | off | start a fresh world every *n* days (`7`, `0.5`, …) |
+| `--mobs` | `MOBS` | `on` | `off` stops animals spawning |
 | `--tls-cert`, `--tls-key` | `TLS_CERT`, `TLS_KEY` | | also serve `https://` and `wss://` |
 
 **World border.** With `--border 32`, the world is a 64×64-chunk square (1024×1024 blocks) centred on spawn. Players who walk or teleport past it are sent back to spawn, and blocks outside it can't be changed (water and explosions stop at it too). Since only changed blocks are stored, this caps how big the world files can get.
@@ -87,7 +88,7 @@ User=blockcraft
 WantedBy=multi-user.target
 ```
 
-What is shared: block edits, explosions, flowing water and lava, the time of day, chat and everyone's position (other players appear as blocky avatars with name tags). The server checks every edit (reach, block type, not inside another player) and has the final say. You see your own edits immediately, and the server corrects them if it refuses one. Chat commands in multiplayer: `/list`; `/time` and `/daycycle` change the time for everyone.
+What is shared: block edits, explosions, flowing water and lava, the time of day, chat and everyone's position (other players appear as blocky avatars with name tags). The server checks every edit (reach, block type, not inside another player) and has the final say. You see your own edits immediately, and the server corrects them if it refuses one. Chat commands in multiplayer: `/list`; `/time` and `/daycycle` change the time for everyone. Animals live on the server too: everyone sees the same ones, and only operators can `/summon`.
 
 Current limits:
 
@@ -116,6 +117,8 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 - **Trees** (oak, birch, spruce), cacti, sugar cane, flowers, grass and mushrooms
 - **80 block types**, including glass, TNT, glowstone, torches, bookshelves, 16 wool colours and ore blocks
 - **Redstone**: redstone lamps, torches, levers, buttons, dust, repeaters, pistons and sticky pistons (see [Redstone](#redstone))
+- **Villages, desert pyramids and desert wells** in new worlds (`/locate village` finds the nearest)
+- **Animals**: pigs, cows, sheep and chickens wander the grasslands; punch one to push it, twice to make it vanish (`/summon pig` makes more)
 - **Decorations**: doors that open and close, climbable ladders, beds, signs you can write on, and flower pots for flowers, mushrooms and ferns
 - **Lighting**: flood-fill sky light and block light (torches, glowstone, lava), smooth lighting and ambient occlusion
 - **Day/night cycle** with sunsets, stars, a square sun and moon, and drifting clouds
@@ -126,7 +129,7 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 - Synthesised sound effects (Web Audio, no samples)
 - **Multiple save slots** in `localStorage`, with autosave
 - **Multiplayer** through a dependency-free dedicated server (see above)
-- Chat commands: `/time set night`, `/tp`, `/give`, `/seed` and more (`/help`)
+- Chat commands: `/time set night`, `/tp`, `/give`, `/seed`, `/locate`, `/summon` and more (`/help`)
 - Settings: render distance, FOV, sensitivity, render scale, volume, view bobbing, clouds
 - Touch controls for phones and tablets
 - A live, slowly rotating world behind the title screen
@@ -141,7 +144,7 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 | Space twice | Toggle flying |
 | Shift | Sneak / fly down |
 | Ctrl, R, or double-tap W | Sprint |
-| Left click | Break block |
+| Left click | Break block · punch an animal |
 | Right click | Place block · open doors · fill pots · edit signs · light TNT |
 | Shift + right click | Place against a door, pot or sign instead of using it |
 | Middle click | Pick block |
@@ -171,6 +174,7 @@ src/
     protocol.js            multiplayer message reference, shared with the server
     client.js              connection and server address handling
     players.js             other players: smoothed movement, avatars, name tags
+    mobs.js                the server's animals as this client sees them
   main.js                  game loop, interaction, commands
   constants.js, math.js    shared constants, matrix helpers, frustum culling
   noise.js                 seeded PRNG and simplex noise
@@ -180,6 +184,8 @@ src/
   player.js                movement and swept AABB collision
   raycast.js               voxel DDA for block picking
   fluids.js                flowing water and lava
+  mobs.js, mobrender.js    animals: wandering, spawning, hits / box models and sounds
+  physics.js               swept box collision shared by the player and animals
   redstone.js              redstone circuits and pistons (shared by singleplayer and the server)
   entities.js              primed TNT and explosions
   particles.js, hand.js    debris and smoke, first-person held block
@@ -207,7 +213,9 @@ src/
 - Light is stored per voxel as two 4-bit channels. Edits run incremental removal and propagation BFS passes, so placing a torch or digging only relights the affected area.
 - Each vertex packs into 16 bytes (position, texture layer, UV, face, AO, sky and block light). All quads share one index buffer, and textures live in a `TEXTURE_2D_ARRAY` so mipmaps don't bleed.
 - Rendering is camera-relative, so precision holds far from the origin. Chunks are frustum-culled and drawn front-to-back; water is drawn back-to-front afterwards.
-- Saves store only the blocks you changed, keyed by chunk, and replay them on top of the regenerated terrain.
+- Saves store only the blocks you changed, keyed by chunk, and replay them on top of the regenerated terrain. So every world remembers the terrain generator version it was made with: worlds from before structures existed (version 1) keep exactly the terrain they had, and new worlds (version 2) get structures.
+- Structures (`src/world/structures.js`) are planned per region of 8×8 chunks from the seed alone: at most one structure per region, put on flat dry ground of the right biome. Each chunk builds whatever part of its region's structure falls inside it, so a village comes out the same whichever chunk is generated first, and the server and browser agree without sending anything.
+- Animals are not saved: they spawn on open grass around players and despawn far away. In multiplayer the server runs them and sends the ones in each player's loaded chunks about 10 times a second (only those that moved); clients smooth them out.
 - Redstone state (power level, on/off, extended, facing) is also in the block id, so circuits need no extra saved data. Block ids are 16-bit. `src/redstone.js` is shared by singleplayer and the server: it keeps only a dirty set and a few timers, recomputes a whole dust network from its sources when anything next to it changes, and writes the result back through `setBlocks`, so multiplayer clients just receive normal block changes.
 - Doors, beds, ladders, signs and pots are box models in 1/16-block units. Each facing, door half and open state is its own block id, so they need no extra per-block data; only sign text is stored separately. Players collide with each block's boxes (you can stand on a bed, and a closed door blocks only its panel).
 - Multiplayer never sends terrain. The browser and the server both generate it from the seed; when a player loads a chunk the server sends that chunk's edits, then streams every later change in order, so all players converge on the server's copy. The server runs the same generator, liquid and TNT code as the browser. Messages are JSON over WebSocket and are listed in `src/net/protocol.js`.
