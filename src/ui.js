@@ -1,6 +1,7 @@
 // DOM side of the game: menus, hotbar, inventory, chat and debug overlay.
 
 import { BLOCKS, INVENTORY_BLOCKS } from './blocks.js';
+import { MOB_KINDS } from './mobs.js';
 import { listWorlds, deleteWorld, loadMultiplayer } from './storage.js';
 import { OFFICIAL_SITE } from './net/protocol.js';
 
@@ -427,6 +428,7 @@ export class UI {
     };
     const quick = { ...QUICK };
     const g = this.game;
+    if (!g.net || g.isOp) quick['/summon'] = MOB_KINDS.map((k) => [k[0].toUpperCase() + k.slice(1), `/summon ${k}`]);
     if (g.net && g.isOp) {
       // Operators also get player commands, with the online players as options.
       const names = g.remote ? g.remote.names() : [];

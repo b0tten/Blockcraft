@@ -4,7 +4,7 @@
 
 import { TerrainGenerator, BIOME } from '../src/world/generator.js';
 import { WORLD_HEIGHT as H, SEA_LEVEL, chunkKey } from '../src/constants.js';
-import { B, SOLID, LIQUID, NEEDS_SUPPORT } from '../src/blocks.js';
+import { B, SOLID, LIQUID, NEEDS_SUPPORT, COLLIDE, FULL_BOX } from '../src/blocks.js';
 import { linkedRemoval, attachedLost, isSign } from '../src/world/rules.js';
 import { setSignIn, getSignIn } from '../src/world/edits.js';
 
@@ -41,6 +41,14 @@ export class ServerWorld {
   getBlock(x, y, z) {
     if (y < 0 || y >= H) return 0;
     return this.chunk(x >> 4, z >> 4).blocks[(x & 15) | ((z & 15) << 4) | (y << 8)];
+  }
+
+  // Collision boxes (block units) of the voxel, or null; for mobs.
+  boxesAt(x, y, z) {
+    if (y < 0) return FULL_BOX;
+    if (y >= H) return null;
+    const b = this.getBlock(x, y, z);
+    return SOLID[b] ? FULL_BOX : COLLIDE[b] || null;
   }
 
   isSolid(x, y, z) {

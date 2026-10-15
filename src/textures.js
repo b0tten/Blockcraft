@@ -716,6 +716,58 @@ PAINTERS.avatar_face = (t) => {
   for (let x = 5; x <= 10; x++) t.set(x, 13, [120, 70, 52]);
 };
 
+// Mobs. Each box face shows a whole tile, so faces are drawn at tile scale.
+const PIG = [240, 160, 160], COW_WHITE = [232, 228, 222], COW_BROWN = [74, 50, 34], WOOL_WHITE = [236, 236, 230], SHEEP_SKIN = [216, 190, 160];
+const eyes = (t, y, white, pupil, x0 = 2, x1 = 12) => {
+  for (const x of [x0, x0 + 1]) t.set(x, y, white), t.set(x, y + 1, white);
+  for (const x of [x1, x1 + 1]) t.set(x, y, white), t.set(x, y + 1, white);
+  t.set(x0 + 1, y + 1, pupil);
+  t.set(x1, y + 1, pupil);
+};
+PAINTERS.pig_skin = (t) => t.speckle(PIG, 0.08);
+PAINTERS.pig_face = (t) => {
+  t.speckle(PIG, 0.08);
+  eyes(t, 5, [250, 250, 250], [30, 30, 30]);
+};
+PAINTERS.pig_snout = (t) => {
+  t.speckle([228, 136, 140], 0.06);
+  for (const x of [3, 4, 11, 12]) for (const y of [6, 7, 8, 9]) t.set(x, y, [120, 58, 64]);
+};
+PAINTERS.cow_hide = (t) => {
+  t.speckle(COW_WHITE, 0.06);
+  for (let i = 0; i < 4; i++) {
+    const cx = t.rnd(16), cy = t.rnd(16), r = 2 + t.rnd(3);
+    for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r) t.set(cx + x, cy + y, scale(COW_BROWN, 0.9 + t.rand() * 0.2));
+  }
+};
+PAINTERS.cow_face = (t) => {
+  t.speckle(COW_BROWN, 0.1);
+  for (let y = 0; y < 16; y++) for (let x = 5; x <= 10; x++) if (y < 9) t.set(x, y, scale(COW_WHITE, 0.95));
+  eyes(t, 5, [250, 250, 250], [20, 20, 20]);
+  for (let y = 10; y < 16; y++) for (let x = 3; x <= 12; x++) t.set(x, y, scale([200, 170, 160], 0.95 + t.rand() * 0.1));
+  for (const x of [5, 10]) t.set(x, 12, [80, 60, 56]);
+};
+PAINTERS.cow_horn = (t) => t.speckle([224, 216, 196], 0.08);
+PAINTERS.sheep_wool = (t) => {
+  t.speckle(WOOL_WHITE, 0.08);
+  for (let i = 0; i < 30; i++) t.mul(t.rnd(16), t.rnd(16), 0.88);
+};
+PAINTERS.sheep_skin = (t) => t.speckle(SHEEP_SKIN, 0.08);
+PAINTERS.sheep_face = (t) => {
+  PAINTERS.sheep_wool(t);
+  for (let y = 4; y < 16; y++) for (let x = 2; x <= 13; x++) t.set(x, y, scale(SHEEP_SKIN, 0.95 + t.rand() * 0.08));
+  eyes(t, 6, [250, 250, 250], [30, 30, 30], 2, 12);
+  for (const x of [7, 8]) t.set(x, 11, [170, 120, 110]);
+};
+PAINTERS.chicken_white = (t) => t.speckle([244, 244, 240], 0.05);
+PAINTERS.chicken_face = (t) => {
+  t.speckle([244, 244, 240], 0.05);
+  for (const x of [2, 13]) for (const y of [4, 5, 6]) t.set(x, y, [20, 20, 20]);
+};
+PAINTERS.chicken_beak = (t) => t.speckle([240, 170, 40], 0.08);
+PAINTERS.chicken_wattle = (t) => t.speckle([210, 30, 30], 0.08);
+PAINTERS.chicken_leg = (t) => t.speckle([230, 170, 50], 0.08);
+
 // Decoration blocks.
 const OAK = [164, 132, 80];
 const BED_RED = [168, 32, 32];

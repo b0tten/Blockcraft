@@ -12,6 +12,9 @@ import { Particles } from './particles.js';
 import { Fluids } from './fluids.js';
 import { Redstone } from './redstone.js';
 import { STRUCTURE_KINDS } from './world/structures.js';
+import { MobManager, MOB_KINDS, MOB_INFO, pickMob } from './mobs.js';
+import { MobRenderer, MOB_TEXTURES } from './mobrender.js';
+import { RemoteMobs } from './net/mobs.js';
 import { PrimedTNT, explode, explosionEffects } from './entities.js';
 import { Connection, serverURL } from './net/client.js';
 import { RemotePlayers, AVATAR_TEXTURES } from './net/players.js';
@@ -63,9 +66,10 @@ class Game {
       return;
     }
 
-    const tex = buildTextureArray([...allTextureNames(), ...AVATAR_TEXTURES]);
+    const tex = buildTextureArray([...allTextureNames(), ...AVATAR_TEXTURES, ...MOB_TEXTURES]);
     resolveTextures((name) => tex.layers.get(name));
     this.texLayers = tex.layers;
+    this.mobRender = new MobRenderer(tex.layers);
     this.renderer.setTextures(tex);
     this.signText = new SignText(this.renderer.gl);
     this.icons = makeIcons(tex);
@@ -197,6 +201,8 @@ class Game {
       return !!boxes && this.player.intersectsBoxes(boxes, x, y, z);
     });
     this.world.onChange = (x, y, z) => this.redstone.notify(x, y, z);
+    this.mobs = new MobManager(this.world); // not saved: animals respawn around the player
+    this.remoteMobs = null;
     this.player = new Player();
     const p = this.player;
     if (data?.player) {
@@ -248,6 +254,8 @@ class Game {
     this.world = null;
     this.remote?.clear();
     this.remote = null;
+    this.mobs = null;
+    this.remoteMobs = null;
     this.renderer.worldSprites.clear();
     this.renderer.handSprites.clear();
   }
@@ -316,6 +324,8 @@ class Game {
     this.world.setRenderDistance(this.settings.renderDistance);
     this.fluids = null; // the server runs liquids
     this.redstone = null; // and redstone
+    this.mobs = null; // and mobs, which arrive as `mobs` messages
+    this.remoteMobs = new RemoteMobs((e) => this.near(e.x, e.y, e.z, 24) && this.sound.mobHurt(e.kind));
     this.player = new Player();
     const p = this.player, sp = msg.spawn, you = msg.you;
     this.spawnPoint = { x: sp[0], y: sp[1], z: sp[2] };
@@ -378,6 +388,15 @@ class Game {
         break;
       case 'swing':
         this.remote.swing(m.id);
+        break;
+      case 'mobs':
+        if (Array.isArray(m.s)) this.remoteMobs.apply(m.s);
+        break;
+      case 'mobgone':
+        for (const [id, puff] of Array.isArray(m.g) ? m.g : []) {
+          const e = this.remoteMobs.remove(id);
+          if (e && puff) this.mobPuff(e);
+        }
         break;
       case 'op':
         this.isOp = !!m.on;
@@ -675,6 +694,8 @@ class Game {
       if (this.dayCycle) this.time = (this.time + dt / DAY_LENGTH_SECONDS) % 1;
       this.fluids?.update(dt);
       this.redstone?.update(dt);
+      this.mobs?.update(dt, [p.pos]);
+      this.mobSounds(dt);
       for (let i = this.entities.length - 1; i >= 0; i--) {
         const e = this.entities[i];
         if (e.update(dt, w)) {
@@ -691,6 +712,7 @@ class Game {
     }
     if (online) {
       this.remote.update(dt);
+      this.remoteMobs.update(dt);
       this.sendState(dt);
     }
 
@@ -782,9 +804,44 @@ class Game {
 
   // In multiplayer, edits show immediately and are sent to the server, which confirms
   // them by broadcasting the change or corrects them by sending the real block back.
+  // Mobs in view: local ones in singleplayer, the server's in multiplayer.
+  mobList() {
+    return this.mobs ? this.mobs.mobs.values() : this.remoteMobs ? this.remoteMobs.values() : [];
+  }
+
+  mobPuff(e) {
+    this.particles.blockBreak(Math.floor(e.x), Math.floor(e.y + 0.3), Math.floor(e.z), B[MOB_INFO[e.kind].puff], 3);
+    this.sound.pop();
+  }
+
+  // Now and then an animal nearby makes its noise.
+  mobSounds(dt) {
+    const p = this.player.pos;
+    for (const e of this.mobList()) {
+      if (Math.random() > dt / 10) continue;
+      const d = Math.hypot(e.x - p[0], e.y - p[1], e.z - p[2]);
+      if (d < 16) this.sound.mob(e.kind, 1 - d / 16);
+    }
+  }
+
+  // Punch the mob under the crosshair, if one is nearer than the targeted block.
+  hitMob() {
+    const p = this.player, eye = p.eye, d = forwardVector(p.yaw, p.pitch);
+    const hit = pickMob([...this.mobList()], eye, d, REACH);
+    if (!hit || (this.target && this.target.dist < hit.dist)) return false;
+    const e = hit.mob;
+    this.sound.mobHurt(e.kind);
+    if (this.net) {
+      this.net.send({ t: 'hit', id: e.id });
+      e.hurt = 0.4; // shown at once; the server knocks it back
+    } else if (this.mobs.hit(e.id, p.pos[0], p.pos[2]) === 'gone') this.mobPuff(e);
+    return true;
+  }
+
   breakBlock() {
     this.swing = 0;
     this.net?.send({ t: 'swing' });
+    if (this.hitMob()) return;
     const t = this.target;
     if (!t) return;
     const id = t.block;
@@ -922,6 +979,7 @@ class Game {
     ws.clear();
     for (const e of this.entities) e.draw(ws, cam, w, env.sunlight);
     this.remote?.draw(ws, cam, w, env.sunlight, (w.renderDistance + 1) * 16);
+    this.mobRender.draw(ws, cam, w, env.sunlight, this.mobList(), (w.renderDistance + 1) * 16);
     this.particles.build(ws, cam, w, env.sunlight);
     this.signText.build(w, cam, env.sunlight);
 
@@ -1021,7 +1079,7 @@ class Game {
     switch (cmd) {
       case 'help':
         log(
-          'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /locate <village|pyramid|well>, /rd <2-16>, /give <block>' +
+          'Commands: /time set <day|noon|sunset|night|midnight|0-24000>, /daycycle <on|off>, /tp <x> <y> <z>, /spawn, /fly, /seed, /locate <village|pyramid|well>, /summon <pig|cow|sheep|chicken> [count], /rd <2-16>, /give <block>' +
             (this.net ? ', /list' : '') +
             (this.isOp ? '. Operator commands: /ophelp' : ''),
         );
@@ -1065,6 +1123,18 @@ class Game {
       case 'seed':
         log(`Seed: ${this.world.seed}`);
         break;
+      case 'summon': {
+        const kind = (args[0] || '').toLowerCase();
+        const n = clamp(Math.round(Number(args[1] ?? 1)) || 1, 1, 10);
+        if (!MOB_KINDS.includes(kind)) {
+          log(`Usage: /summon <${MOB_KINDS.join('|')}> [count]`);
+          break;
+        }
+        const f = forwardVector(p.yaw, 0);
+        this.mobs.summon(kind, p.pos[0] + f[0] * 2, p.pos[1] + 0.2, p.pos[2] + f[2] * 2, n);
+        log(`Summoned ${n} ${kind}${n > 1 ? 's' : ''}`);
+        break;
+      }
       case 'locate': {
         const kind = (args[0] || '').toLowerCase();
         const st = this.world.generator.structures;
