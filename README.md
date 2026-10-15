@@ -156,6 +156,10 @@ Not included: dust powering a block it points at, comparators, observers, lockin
 
 On phones and tablets: use the left-side joystick to move, drag anywhere to look, tap to place, press and hold to break, ↑ to jump (double-tap to fly), ↓ to sneak or fly down, and tap hotbar slots to select them. The speech-bubble button opens chat. Its quick buttons type a command such as `/time` and then offer its options (they also appear when you type the command yourself).
 
+## Developer tools
+
+`tools/` has local helpers for editing textures and sounds without restarting the game: a texture viewer and pixel editor with mob previews, and a sound board. Run `npm start` and open `http://localhost:8080/tools/`. [tools/README.md](tools/README.md) explains how textures and sounds are made and how to change them.
+
 ## How it works
 
 ```

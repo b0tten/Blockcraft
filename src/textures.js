@@ -284,6 +284,19 @@ function flower(t, petal, center) {
   );
 }
 
+// Hand-drawn pixel art (what tools/textures.html exports): 16 rows of 16 characters, each a
+// key of `palette` ([r, g, b] or [r, g, b, a]); '.' is transparent.
+function pixelArt(t, palette, rows) {
+  t.clear();
+  rows.forEach((row, y) => [...row].forEach((ch, x) => ch !== '.' && palette[ch] && t.set(x, y, palette[ch])));
+}
+
+// Raw RGBA pixels (256 * 4 bytes) as base64, for drawings with too many colours for pixelArt.
+function pixelData(t, base64) {
+  const bin = atob(base64);
+  for (let i = 0; i < t.data.length && i < bin.length; i++) t.data[i] = bin.charCodeAt(i);
+}
+
 function drawPattern(t, x0, y0, rows, color) {
   rows.forEach((row, dy) => [...row].forEach((ch, dx) => ch === '#' && t.set(x0 + dx, y0 + dy, color)));
 }
@@ -1055,4 +1068,4 @@ export function buildTextureArray(names) {
   return { data, layers, images, count: names.length };
 }
 
-export { mix };
+export { mix, pixelArt, pixelData, PAINTERS };

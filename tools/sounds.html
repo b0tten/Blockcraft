@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blockcraft sounds</title>
+<link rel="stylesheet" href="tools.css">
+<style>
+  .board { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mat { display: inline-flex; gap: 2px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+  .mat span { color: var(--dim); margin-right: 4px; }
+  #scope { width: 100%; height: 120px; background: #111316; border: 1px solid var(--line); border-radius: 4px; display: block; }
+  #pad { height: 220px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  #err { color: #ff8a7a; white-space: pre-wrap; }
+  pre { white-space: pre-wrap; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sounds</h1>
+  <a href="./">tools</a>
+  <label>Volume <input type="range" id="vol" min="0" max="1" step="0.05" value="0.6"></label>
+  <label><input type="checkbox" id="loop"> repeat the last sound every <input type="number" id="every" value="1.5" min="0.3" step="0.1" style="width: 60px"> s</label>
+  <span class="note" id="status">src/audio.js is re-read on every click: edit, save, click.</span>
+</header>
+<main>
+  <canvas id="scope" width="1200" height="120"></canvas>
+  <div class="cols">
+    <section>
+      <h2>Animals</h2>
+      <div class="board" id="animals"></div>
+      <h2>Blocks (break · place · step)</h2>
+      <div class="board" id="blocks"></div>
+      <h2>Other</h2>
+      <div class="board" id="other"></div>
+    </section>
+    <section>
+      <h2>Scratch pad</h2>
+      <p class="note">Runs with <code>s</code> = the game's <code>Sound</code> object. Try parameters here, then copy them into <code>src/audio.js</code>. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> plays.</p>
+      <div class="row" style="margin-bottom: 6px">
+        <select id="examples"></select>
+        <button id="play">▶ Play</button>
+      </div>
+      <textarea id="pad" spellcheck="false"></textarea>
+      <div id="err"></div>
+      <h2>Reference</h2>
+      <pre class="note">s.tone({ freq, endFreq = freq, dur = 0.1, type = 'sine', gain = 0.2, delay = 0 })
+    an oscillator gliding from freq to endFreq (Hz); type: sine | square | sawtooth | triangle
+s.burst({ freq, q = 1, type = 'bandpass', dur = 0.2, gain = 0.4, attack = 0.004,
+          delay = 0, rate = 1, sweepTo = 0 })
+    filtered white noise; type: bandpass | lowpass | highpass; sweepTo glides the filter
+Gains add up: keep the total under about 1. delay is in seconds from now.</pre>
+    </section>
+  </div>
+</main>
+<script type="module" src="sounds.js"></script>
+</body>
+</html>

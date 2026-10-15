@@ -1,6 +1,6 @@
 // Tiny synthesiser for block, step and explosion sounds (Web Audio, no sample files).
 
-const MATERIALS = {
+export const MATERIALS = {
   stone: { freq: 1500, q: 0.9, type: 'bandpass' },
   wood: { freq: 650, q: 1.6, type: 'bandpass' },
   grass: { freq: 2600, q: 0.5, type: 'bandpass' },

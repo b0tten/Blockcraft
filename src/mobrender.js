@@ -20,7 +20,7 @@ const face = (t, f) => [t, t, t, t, t, f];
 // Parts in pixels, in the mob's frame (feet at the origin, facing -Z):
 // [layers, pivot, min (relative to pivot), size, swing] where swing is +1/-1 for legs that
 // move with (or against) the walk, 0 for parts that don't.
-const MODELS = {
+export const MOB_MODELS = {
   pig: [
     ...legs([[3, -5], [-3, 5]], [[-3, -5], [3, 5]], 6, 4, all('pig_skin')),
     [all('pig_skin'), [0, 0, 0], [-5, 6, -8], [10, 8, 16], 0],
@@ -60,7 +60,7 @@ export class MobRenderer {
   constructor(layers) {
     const L = (name) => layers.get(name) ?? 0;
     this.models = {};
-    for (const [kind, parts] of Object.entries(MODELS))
+    for (const [kind, parts] of Object.entries(MOB_MODELS))
       this.models[kind] = parts.map(([tex, pivot, min, size, swing]) => ({
         layers: tex.map(L),
         pivot: pivot.map((v) => v * PX),
