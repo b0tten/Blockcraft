@@ -29,7 +29,15 @@ createServer(async (req, res) => {
       res.writeHead(403).end('Forbidden');
       return;
     }
-    if ((await stat(path).catch(() => null))?.isDirectory()) path = join(path, 'index.html');
+    if ((await stat(path).catch(() => null))?.isDirectory()) {
+      // "/tools" -> "/tools/", so the page's relative links (tools.css, textures.html) resolve
+      // inside the folder.
+      if (!url.pathname.endsWith('/')) {
+        res.writeHead(301, { Location: `${url.pathname}/${url.search}` }).end();
+        return;
+      }
+      path = join(path, 'index.html');
+    }
     const body = await readFile(path);
     res.writeHead(200, { 'Content-Type': TYPES[extname(path)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(body);
