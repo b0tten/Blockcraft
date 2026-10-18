@@ -75,18 +75,19 @@ Things that need support must have it. A torch or plate needs a solid block unde
 - **`dy 0`**: the 21×21 floor, with a wool pattern in its middle (`|ox| + |oz| <= 4`) and a blue wool block at the centre.
 - **`dy 1–10`**: the stepped shell; layer `k` is a ring of half-size `10 - k`, and `dy 10` caps it. Orange wool runs along the front at `dy 5`.
 - **The entrance**: `ox -1..1`, `dy 1..3`, cut from `oz -10` to `-6`.
-- **`dy -1..-9`**: a ladder shaft under the centre block.
+- **`dy -1..-10`**: under the blue centre block, a 5×5 column of sand with a 3×3 hole down its middle, through the room's ceiling. Break the blue block and you drop into the room.
 - **`dy -14..-10`**: the hidden room (walls, floor at `dy -14`, air inside), with gold and diamond blocks and torches in the corners.
+- **`dy -13`**: stone pressure plates on the 3×3 of floor under the hole, all but the centre one. Land anywhere but the very middle and the trap goes off.
 - **`dy -15`**: 3×3 TNT under the room's floor.
 
-The TNT lights when it gets redstone power. A pressure plate powers the block it stands on, and that block powers TNT next to it. So a plate on the room floor right above the TNT makes a working trap:
+The TNT lights when it gets redstone power. A pressure plate powers the block it stands on, and that block powers TNT next to it, which is how the plates on the room floor (`dy -13`) set off the TNT under it (`dy -15`):
 
 ```js
-// in buildPyramid, after the room is built:
-f.set(0, -13, 0, DECOR.plate[0][0]);   // stone plate on the floor block (dy -14) above the TNT (dy -15)
+for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) f.set(ox, -13, oz, DECOR.plate[0][0]);
+f.set(0, -13, 0, 0);   // no plate in the very middle: the one safe spot
 ```
 
-Check it in the structure viewer (the plate shows on layer `-13`), then in a **new** world (see below).
+Check a change in the structure viewer (plates show on layer `-13`), then in a **new** world (see below).
 
 ## Adding a new structure kind
 
