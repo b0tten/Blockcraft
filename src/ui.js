@@ -438,6 +438,7 @@ export class UI {
       for (const n of names) quick[`/ban ${n.toLowerCase()}`] = BAN_QUICK.map(([label, type]) => [label, `/ban ${n} ${type}`]);
       quick['/tp'] = names.map((n) => [n, `/tp ${n}`]);
       quick['/deop'] = [['Give up operator', '/deop']];
+      quick['/tnt'] = [['On', '/tnt on'], ['Off', '/tnt off']];
     }
     // The longest command typed so far picks the buttons ("/ban bob" over "/ban").
     const typed = Object.keys(quick).filter((cmd) => text === cmd || text.startsWith(`${cmd} `)).sort((a, b) => b.length - a.length)[0];

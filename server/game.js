@@ -28,8 +28,8 @@ const HALF_W = 0.3;
 const HEIGHT = 1.8;
 const OP_GRACE_MS = 5 * 60 * 1000;
 const sha256 = (s) => createHash('sha256').update(String(s)).digest();
-const OP_HELP = 'Operator commands: /summon <pig|cow|sheep|chicken> [count], /kick <name> [reason], /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], /unban <name or word>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /save';
-const OP_COMMANDS = new Set(['summon', 'ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist']);
+const OP_HELP = 'Operator commands: /summon <pig|cow|sheep|chicken> [count], /kick <name> [reason], /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason], /unban <name or word>, /banlist, /tp <name>, /say <message>, /op <name>, /deop [name], /tnt [on|off], /save';
+const OP_COMMANDS = new Set(['summon', 'ophelp', 'kick', 'tp', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist', 'tnt']);
 const BID_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const DURATION = { s: 1000, m: 60000, h: 3600000, d: 86400000, w: 604800000 };
 // "30m", "2h", "7d" -> milliseconds, or null.
@@ -50,6 +50,7 @@ const formatSpan = (ms) => {
 export const BAN_TYPES = ['name', 'includes_name', 'browser', 'both'];
 const BAN_USAGE = 'Usage: /ban <name> [name|includes_name|browser|both] [30m|2h|7d] [reason]';
 const MIN_BAN_WORD = 3;
+const TNT_OFF = 'TNT is turned off on this server.';
 const banMessage = (e) => `You are banned from this server${e.until ? ` for another ${formatSpan(e.until - Date.now())}` : ''}${e.reason ? `: ${e.reason}` : '.'}`;
 const isNum = Number.isFinite;
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -103,7 +104,7 @@ export class GameServer {
   constructor({ dir, meta, edits, signs, players, bans, config, log }) {
     this.dir = dir;
     this.config = config; // { name, motd, maxPlayers }
-    this.meta = meta; // { name, seed, spawn, time, dayCycle, created }
+    this.meta = meta; // { name, seed, spawn, time, dayCycle, created, tnt? (false: TNT disabled) }
     this.newWorld(meta.seed, edits, signs);
     this.saved = players; // lower-case name -> { name, pos, yaw, pitch, flying }
     // Bans (see BAN_TYPES) and `seen`: which browsers (hashes of their random IDs) each name
@@ -129,6 +130,7 @@ export class GameServer {
     this.redstone = new Redstone(this.world, (x, y, z, id) => this.occupied(x, y, z, id, null), {
       occupied: (x, y, z) => this.standingIn(x, y, z),
       ignite: (x, y, z) => {
+        if (!this.tntAllowed) return; // the block stays as it is
         this.world.setBlock(x, y, z, 0);
         this.spawnTnt(x, y, z, 4);
       },
@@ -137,6 +139,18 @@ export class GameServer {
     this.mobs = new MobManager(this.world, { spawning: this.config.mobs !== false });
     this.tnts = [];
     this.events = [];
+  }
+
+  // Operators can switch TNT off: then it can't be placed or lit (by hand, redstone or other
+  // explosions), but TNT already in the world stays where it is.
+  get tntAllowed() {
+    return this.meta.tnt !== false;
+  }
+
+  setTnt(on, by) {
+    this.meta.tnt = on;
+    this.broadcast({ t: 'rules', tnt: on });
+    this.announce(`${by} turned TNT ${on ? 'on' : 'off'}`);
   }
 
   // The world border: a square of config.border chunks each way around spawn (0 = none).
@@ -330,6 +344,7 @@ export class GameServer {
       gen: this.meta.gen ?? 1,
       time: this.meta.time,
       cycle: this.meta.dayCycle,
+      tnt: this.tntAllowed,
       spawn: this.meta.spawn,
       you: saved && { pos: saved.pos, yaw: saved.yaw, pitch: saved.pitch, flying: saved.flying },
       players: others,
@@ -449,6 +464,10 @@ export class GameServer {
     const extra = partner ? [partner] : [];
     const block = BLOCKS[id];
     if (!block || (id !== 0 && !block.inventory) || !c.edits.take()) return this.correct(c, x, y, z, false, extra);
+    if (id === B.tnt && !this.tntAllowed) {
+      this.send(c, { t: 'chat', m: TNT_OFF });
+      return this.correct(c, x, y, z, false, extra);
+    }
     if (id === 0) {
       if (cur === 0) return;
       if (LIQUID[cur]) return this.correct(c, x, y, z, false, extra);
@@ -509,6 +528,10 @@ export class GameServer {
     if (!this.inReach(c, x, y, z)) return this.correct(c, x, y, z, !this.near(c, x, z, 32));
     if (!this.inBorder(x, z)) return this.correct(c, x, y, z);
     if (!c.edits.take() || this.world.getBlock(x, y, z) !== B.tnt) return this.correct(c, x, y, z);
+    if (!this.tntAllowed) {
+      this.send(c, { t: 'chat', m: TNT_OFF });
+      return this.correct(c, x, y, z);
+    }
     this.world.setBlock(x, y, z, 0);
     this.spawnTnt(x, y, z, 4);
   }
@@ -669,6 +692,14 @@ export class GameServer {
       case 'save':
         this.save().then(() => reply('World saved'));
         return true;
+      case 'tnt': {
+        const a = (args[0] || '').toLowerCase();
+        if (a && !['on', 'off', 'true', 'false'].includes(a)) return reply('Usage: /tnt [on|off]'), true;
+        const on = a ? a === 'on' || a === 'true' : !this.tntAllowed;
+        if (on === this.tntAllowed) return reply(`TNT is already ${on ? 'on' : 'off'}`), true;
+        this.setTnt(on, by);
+        return true;
+      }
       case 'ban': {
         const target = args[0];
         if (!target || !NAME_RE.test(target)) return reply(BAN_USAGE), true;
@@ -790,7 +821,12 @@ export class GameServer {
   }
 
   explode(x, y, z, radius) {
-    const { list, chain, debris } = blast(this.world, x, y, z, radius);
+    let { list, chain, debris } = blast(this.world, x, y, z, radius);
+    if (!this.tntAllowed) {
+      // TNT that was already lit still goes off, but leaves other TNT in place.
+      list = list.filter(([bx, by, bz]) => this.world.getBlock(bx, by, bz) !== B.tnt);
+      chain = [];
+    }
     this.world.setBlocks(list);
     for (const [bx, by, bz] of list) this.fluids.notifyRemoved(bx, by, bz);
     for (const [bx, by, bz] of chain) this.spawnTnt(bx, by, bz, 0.4 + Math.random() * 0.9);

@@ -460,25 +460,27 @@ function buildPyramid(ctx, p) {
     }
   for (const [ox, oz] of [[-6, -6], [6, -6], [-6, 6], [6, 6]]) f.set(ox, 1, oz, B.torch);
   // Shaft under the blue centre block, down to the hidden room.
-  for (let dy = -1; dy >= -9; dy--) {
-    for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) f.set(ox, dy, oz, B.sandstone);
-    f.set(0, dy, 0, DECOR.ladder[f.face(0)]);
+  for (let dy = -1; dy >= -9; dy--) { // fill with sand
+    for (let ox = -2; ox <= 2; ox++) for (let oz = -2; oz <= 2; oz++) f.set(ox, dy, oz, B.sand);
   }
+
   for (let dy = -14; dy <= -10; dy++)
     for (let ox = -4; ox <= 4; ox++)
       for (let oz = -4; oz <= 4; oz++) {
         const wall = Math.abs(ox) === 4 || Math.abs(oz) === 4 || dy === -14 || dy === -10;
         f.set(ox, dy, oz, wall ? B.sandstone : 0);
       }
-  f.set(0, -10, 0, DECOR.ladder[f.face(0)]);
-  f.set(0, -11, 0, DECOR.ladder[f.face(0)]);
-  f.set(0, -11, -1, B.sandstone);
-  f.set(0, -12, -1, B.sandstone);
-  f.set(0, -12, 0, DECOR.ladder[f.face(0)]);
+
+  for (let dy = -1; dy >= -10; dy--) { // make a hole
+    for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) f.set(ox, dy, oz, 0);
+  }
+
   for (const [ox, oz, id] of [[-3, -3, B.gold_block], [3, -3, B.diamond_block], [-3, 3, B.diamond_block], [3, 3, B.gold_block]]) {
     f.set(ox, -13, oz, id);
     f.set(ox, -12, oz, B.torch);
   }
   // The trap: TNT under the middle of the room's floor.
   for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) f.set(ox, -15, oz, B.tnt);
+  for (let ox = -1; ox <= 1; ox++) for (let oz = -1; oz <= 1; oz++) f.set(ox, -13, oz, DECOR.plate[0][0]);
+  f.set(0, -13, 0, 0); // stone pressure plates except in the center, so you need to land there to be safe, exact opposite of minecraft
 }

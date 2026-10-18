@@ -20,7 +20,8 @@
 //   chat   { m }                       chat line, or a /command the server handles
 //
 // Server -> client
-//   welcome { v, id, name, server, motd, seed, gen, time, cycle, spawn: [x, y, z], you, players: [{ id, name }] }
+//   welcome { v, id, name, server, motd, seed, gen, time, cycle, tnt, spawn: [x, y, z], you, players: [{ id, name }] }
+//                                      (tnt false: operators turned TNT off)
 //   bye     { reason }                 sent right before the server closes the connection
 //   chunk   { cx, cz, e: [index, id, ...], s: [[index, lines], ...] }   all edits and sign
 //                                      text of a subscribed chunk (reply to sub)
@@ -30,6 +31,7 @@
 //   chat    { m }
 //   time    { v, c }                   time of day (0..1) and whether the cycle runs
 //   tnt     { x, y, z, f }             primed TNT appeared (f = fuse seconds)
+//   rules   { tnt }                    an operator turned TNT on or off
 //   boom    { x, y, z, r, d: [x, y, z, id, ...] }   explosion (d = blocks to show debris for)
 //   fx      { k: 'break' | 'place', x, y, z, id }   another player's edit, for particles and sound
 //   swing   { id }
@@ -59,4 +61,4 @@ export const NAME_RE = /^[A-Za-z0-9_]{1,16}$/;
 export const NAME_RULES = 'Names are 1–16 letters, digits or underscores.';
 
 // Chat commands the server runs (everything else is handled by the client).
-export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who', 'ophelp', 'kick', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist', 'summon']);
+export const SERVER_COMMANDS = new Set(['time', 'daycycle', 'list', 'who', 'ophelp', 'kick', 'say', 'op', 'deop', 'save', 'ban', 'unban', 'banlist', 'summon', 'tnt']);

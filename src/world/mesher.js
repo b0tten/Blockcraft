@@ -38,13 +38,15 @@ class VertexBuilder {
     this.u16 = new Uint16Array(buf);
     this.cap = cap;
   }
+  // Positions come in 1/16-block units and are stored in 1/32 units (half pixels), so thin
+  // parts such as a pressed pressure plate (0.5 px) keep their height.
   vert(x, y, z, layer, u, v, f, ao, sky, blk) {
     if (this.count >= this.cap) this.alloc(this.cap * 2);
     const o16 = this.count * 8, o8 = this.count * 16;
     const u16 = this.u16, u8 = this.u8;
-    u16[o16] = x;
-    u16[o16 + 1] = y;
-    u16[o16 + 2] = z;
+    u16[o16] = x * 2;
+    u16[o16 + 1] = y * 2;
+    u16[o16 + 2] = z * 2;
     u16[o16 + 3] = layer;
     u8[o8 + 8] = u;
     u8[o8 + 9] = v;

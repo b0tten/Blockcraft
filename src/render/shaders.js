@@ -30,7 +30,7 @@ out float v_fog;
 const float SHADE[8] = float[8](0.62, 0.62, 1.0, 0.5, 0.8, 0.8, 0.9, 1.0);
 const float AO[4] = float[4](0.42, 0.62, 0.8, 1.0);
 void main() {
-  vec3 local = a_pos / 16.0;
+  vec3 local = a_pos / 32.0; // half-pixel units (see mesher.js)
   vec3 p = local + u_offset;
   int f = int(a_uvfa.z + 0.5);
   int face = f & 7;

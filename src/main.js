@@ -41,6 +41,7 @@ const NO_INPUT = { forward: false, back: false, left: false, right: false, jump:
 const FACE_OF = { '1,0,0': 0, '-1,0,0': 1, '0,1,0': 2, '0,-1,0': 3, '0,0,1': 4, '0,0,-1': 5 };
 const LEAVES = new Set([B.oak_leaves, B.birch_leaves, B.spruce_leaves]);
 const LOGS = new Set([B.oak_log, B.birch_log, B.spruce_log, B.cactus]);
+const TNT_OFF = 'TNT is turned off on this server.';
 
 class Game {
   constructor() {
@@ -196,6 +197,7 @@ class Game {
     });
     this.world.setRenderDistance(this.settings.renderDistance);
     this.fluids = new Fluids(this.world);
+    this.tntOff = false;
     const plateBox = [[0, 0, 0, 1, 0.25, 1]];
     this.redstone = new Redstone(
       this.world,
@@ -353,6 +355,7 @@ class Game {
     }
     this.time = msg.time;
     this.dayCycle = !!msg.cycle;
+    this.tntOff = msg.tnt === false;
     const saved = store.loadMultiplayer();
     this.hotbar = saved.hotbar?.length === 9 ? saved.hotbar.map((id) => (BLOCKS[id] ? id : 0)) : [...DEFAULT_HOTBAR];
     this.selected = 0;
@@ -397,6 +400,9 @@ class Game {
       case 'time':
         this.time = m.v;
         this.dayCycle = !!m.c;
+        break;
+      case 'rules':
+        this.tntOff = m.tnt === false;
         break;
       case 'swing':
         this.remote.swing(m.id);
@@ -892,6 +898,8 @@ class Game {
         return;
       }
       if (t.block === B.tnt) {
+        this.swing = 0;
+        if (this.tntOff) return this.ui.log(TNT_OFF);
         w.setBlock(t.x, t.y, t.z, 0);
         if (this.net) {
           this.net.send({ t: 'ignite', x: t.x, y: t.y, z: t.z });
@@ -906,6 +914,7 @@ class Game {
       }
     }
     if (!held) return;
+    if (held === B.tnt && this.tntOff) return this.ui.log(TNT_OFF);
     let x = t.x + t.nx, y = t.y + t.ny, z = t.z + t.nz;
     let face = FACE_OF[`${t.nx},${t.ny},${t.nz}`] ?? 2;
     if (REPLACEABLE[t.block] && !LIQUID[t.block] && t.block !== held) {
