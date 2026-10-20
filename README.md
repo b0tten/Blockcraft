@@ -65,6 +65,14 @@ Open the port (TCP 8765 by default) in your firewall or router. The server also 
 
 Matching online players are kicked. `/unban <name or word>` lifts every ban made against that name or word, and `/banlist` shows them with their type. Each browser sends the server a random ID (kept in that site's storage), and the server remembers which IDs each name used; it stores only fingerprints (hashes) of them, in `bans.json`. Bans never spread: a banned browser trying another name is refused, but that name isn't banned, so nobody can get someone else banned by typing their name. Bans survive restarts and world resets. Limit: the ID lives in site storage, so a different browser, a private window or cleared site data gets past a browser ban. It stops casual evasion, not a determined player.
 
+**Action log.** Start the server with `--log-actions 50` (or `LOG_ACTIONS=50`) to keep each player's last 50 block actions in `actions.json` in the world folder. It is off unless you ask for it. Each entry has the time, the action, the block and its coordinates:
+
+```json
+{ "time": "2026-10-20T14:03:11.204Z", "action": "place", "block": "tnt", "x": 120, "y": 64, "z": -38 }
+```
+
+Actions are `place`, `break`, `use` (levers and buttons), `plate` (stepping onto a pressure plate) and `ignite` (lighting TNT by hand). Using the same block several times in a row is one entry with a count `n`. When a player breaks a block they placed themselves, and that placement is still in their log, both entries are removed. So placing and breaking junk can't push older actions out of the log. Players are listed by name (lower case). The file is written with the world (every minute and on stop), and it is kept across restarts and world resets.
+
 **Turning TNT off.** `/tnt off` (operators) or `tnt off` (console) stops TNT for everyone: it can't be placed or lit, by hand, by redstone or by another explosion. TNT already in the world stays where it is, and TNT that was already lit still goes off but sets off no more. `/tnt on` turns it back on. The setting is saved with the world.
 
 Type `help` in the server's terminal for console commands: `list`, `say`, `kick`, `ban`, `unban`, `banlist`, `op`, `deop`, `time set`, `daycycle`, `tnt`, `reset`, `cert`, `save` and `stop`. The world is saved every minute and when the server stops (Ctrl+C or `SIGTERM`), as JSON files in the world folder; back that folder up.
