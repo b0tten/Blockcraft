@@ -33,6 +33,9 @@ Usage: node server/index.js [options]
   --border <chunks>   world border: this many chunks each way from spawn (env BORDER)
   --reset-days <n>    start a fresh world every n days, e.g. 7 or 0.5 (env RESET_DAYS)
   --mobs <on|off>     animals spawning around players (default on, env MOBS)
+  --log-actions <n>   keep each player's last n block actions in actions.json
+                      (placing, breaking, levers, buttons, plates, TNT; default off,
+                      env LOG_ACTIONS)
   --tls-cert <file>   certificate (PEM) to also serve https:// and wss:// (env TLS_CERT);
                       plain http:// keeps working on the same port, and renewed
                       certificate files are picked up automatically
@@ -54,6 +57,7 @@ const OPTIONS = {
     border: { type: 'string' },
     'reset-days': { type: 'string' },
     mobs: { type: 'string' },
+    'log-actions': { type: 'string' },
     'tls-cert': { type: 'string' },
     'tls-key': { type: 'string' },
     help: { type: 'boolean', short: 'h' },
@@ -99,6 +103,7 @@ const config = {
   resetDays: Math.max(0, Number(opt['reset-days'] ?? env.RESET_DAYS ?? 0) || 0),
   seed: (opt.seed ?? env.SEED) ? parseSeed(opt.seed ?? env.SEED) : null,
   mobs: !/^(off|false|0|no)$/i.test(String(opt.mobs ?? env.MOBS ?? 'on')),
+  logActions: Math.max(0, Math.floor(Number(opt['log-actions'] ?? env.LOG_ACTIONS ?? 0)) || 0),
 };
 const tlsCert = opt['tls-cert'] ?? env.TLS_CERT;
 const tlsKey = opt['tls-key'] ?? env.TLS_KEY;

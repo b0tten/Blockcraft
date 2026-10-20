@@ -7,11 +7,12 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ServerWorld } from './world.js';
 import { saveWorld } from './storage.js';
+import { ActionLog } from './actions.js';
 import { Fluids } from '../src/fluids.js';
 import { Redstone } from '../src/redstone.js';
 import { MobManager, MOB_KINDS, standsIn } from '../src/mobs.js';
 import { PrimedTNT, blast } from '../src/entities.js';
-import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX } from '../src/blocks.js';
+import { B, BLOCKS, SOLID, LIQUID, COLLIDE, FULL_BOX, VARIANT } from '../src/blocks.js';
 import { placeChanges, useChanges, linkedRemoval, isSign, cleanSignLines } from '../src/world/rules.js';
 import { WORLD_HEIGHT, DAY_LENGTH_SECONDS, GEN_VERSION, chunkKey } from '../src/constants.js';
 import { editsToArray, signsToArray } from '../src/world/edits.js';
@@ -101,7 +102,7 @@ export function migrateBans(saved) {
 }
 
 export class GameServer {
-  constructor({ dir, meta, edits, signs, players, bans, config, log }) {
+  constructor({ dir, meta, edits, signs, players, bans, actions, config, log }) {
     this.dir = dir;
     this.config = config; // { name, motd, maxPlayers }
     this.meta = meta; // { name, seed, spawn, time, dayCycle, created, tnt? (false: TNT disabled) }
@@ -110,6 +111,8 @@ export class GameServer {
     // Bans (see BAN_TYPES) and `seen`: which browsers (hashes of their random IDs) each name
     // used, so a ban can cover them. Kept across world resets.
     this.bans = migrateBans(bans);
+    // Each player's last block actions, only with --log-actions <n> (config.logActions).
+    this.actions = config.logActions > 0 ? new ActionLog(config.logActions, actions) : null;
     this.clients = new Set();
     this.byId = new Map(); // joined players
     // Temporary operators: lower-case name -> { keyHash, until }. A grant survives a disconnect
@@ -472,6 +475,7 @@ export class GameServer {
       if (cur === 0) return;
       if (LIQUID[cur]) return this.correct(c, x, y, z, false, extra);
       w.setBlock(x, y, z, 0);
+      this.actions?.broke(c.name, cur, x, y, z, partner);
       this.fluids.notifyRemoved(x, y, z);
       this.event(x, z, { t: 'fx', k: 'break', x, y, z, id: cur }, c);
       return;
@@ -483,6 +487,7 @@ export class GameServer {
       return this.correct(c, x, y, z, false, cells.concat(this.neighbours(x, y, z)));
     }
     w.setBlocks(changes);
+    this.actions?.placed(c.name, changes[0][3], x, y, z);
     this.event(x, z, { t: 'fx', k: 'place', x, y, z, id: changes[0][3] }, c);
   }
 
@@ -500,7 +505,9 @@ export class GameServer {
     if (!this.inBorder(x, z) || !c.edits.take()) return this.correct(c, x, y, z, false, extra);
     const changes = useChanges(this.world, x, y, z, held);
     if (!changes) return this.correct(c, x, y, z, false, extra);
+    const kind = VARIANT[this.world.getBlock(x, y, z)]?.kind;
     this.world.setBlocks(changes);
+    if (kind === 'lever' || kind === 'button') this.actions?.add(c.name, 'use', changes[0][3], x, y, z);
     this.event(x, z, { t: 'fx', k: 'place', x, y, z, id: changes[0][3] }, c);
   }
 
@@ -533,6 +540,7 @@ export class GameServer {
       return this.correct(c, x, y, z);
     }
     this.world.setBlock(x, y, z, 0);
+    this.actions?.add(c.name, 'ignite', B.tnt, x, y, z);
     this.spawnTnt(x, y, z, 4);
   }
 
@@ -842,7 +850,13 @@ export class GameServer {
     this.redstone.update(DT);
     this.mobs.update(DT, [...this.byId.values()].filter((c) => c.pos).map((c) => c.pos));
     // Pressure plates under players and animals.
-    for (const c of this.byId.values()) if (c.pos) this.redstone.stepOn(Math.floor(c.pos[0]), Math.floor(c.pos[1] + 0.01), Math.floor(c.pos[2]));
+    for (const c of this.byId.values()) {
+      if (!c.pos) continue;
+      const x = Math.floor(c.pos[0]), y = Math.floor(c.pos[1] + 0.01), z = Math.floor(c.pos[2]);
+      const v = VARIANT[w.getBlock(x, y, z)];
+      if (v?.kind === 'plate' && !v.on) this.actions?.add(c.name, 'plate', w.getBlock(x, y, z), x, y, z);
+      this.redstone.stepOn(x, y, z);
+    }
     for (const m of this.mobs.mobs.values()) this.redstone.stepOn(Math.floor(m.x), Math.floor(m.y + 0.01), Math.floor(m.z));
     for (let i = this.tnts.length - 1; i >= 0; i--) {
       const e = this.tnts[i];
@@ -944,7 +958,9 @@ export class GameServer {
   save() {
     if (!this.saving) {
       for (const c of this.byId.values()) this.remember(c);
-      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, signs: this.world.signs, players: this.saved, bans: this.bans })
+      const actions = this.actions?.dirty ? this.actions.toJSON() : null;
+      if (this.actions) this.actions.dirty = false;
+      this.saving = saveWorld(this.dir, { meta: this.meta, edits: this.world.edits, signs: this.world.signs, players: this.saved, bans: this.bans, actions })
         .catch((err) => this.log(`Saving failed: ${err.message}`))
         .finally(() => (this.saving = null));
     }
